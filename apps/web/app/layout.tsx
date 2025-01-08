@@ -18,6 +18,11 @@ const fontDisplay = Space_Grotesk({
   variable: "--font-display",
 });
 
+export const metadata = {
+  title: "Chrona",
+  description: "use your journal entries to gain insights into your life",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
