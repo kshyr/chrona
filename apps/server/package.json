@@ -1,0 +1,8 @@
+{
+  "name": "server",
+  "scripts": {
+    "build": "go build -o bin/chrona",
+    "dev": "go run .",
+    "watch": "air -c .air.toml"
+  }
+}
