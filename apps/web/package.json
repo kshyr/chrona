@@ -5,6 +5,7 @@
     "dev": "next dev --turbopack",
     "watch": "turbo dev",
     "build": "next build",
+    "vercel-build": "next build",
     "start": "next start",
     "lint": "next lint"
   },
