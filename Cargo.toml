@@ -1,0 +1,13 @@
+[package]
+name = "chrona"
+version = "0.1.0"
+description = "tui time logging tool"
+authors = ["Kostiantyn Shyrolapov <kostya.shirolapov@gmail.com>"]
+license = "MIT"
+edition = "2024"
+
+[dependencies]
+crossterm = "0.29.0"
+ratatui = {version = "0.29.0", features = ["all-widgets"]}
+chrono = "0.4.41"
+color-eyre = "0.6.4"
