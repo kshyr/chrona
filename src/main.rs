@@ -1,17 +1,15 @@
+use std::default;
+
 use color_eyre::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout},
-    symbols,
-    text::Line,
-    widgets::{Block, Borders, HighlightSpacing, List, ListItem, ListState},
 };
 
 mod task;
 mod task_list;
 
-use task::Task;
 use task_list::{TaskList, TaskListState};
 
 fn main() -> color_eyre::Result<()> {
@@ -22,17 +20,31 @@ fn main() -> color_eyre::Result<()> {
     result
 }
 
+#[derive(Debug, Default, Copy, Clone)]
+enum ActiveWidget {
+    #[default]
+    TaskList1,
+    TaskList2,
+}
+
 #[derive(Debug, Default)]
 pub struct App {
     running: bool,
-    task_list: TaskListState,
+    active_widget: ActiveWidget,
+    task_list1: TaskListState,
+    task_list2: TaskListState,
 }
 
 impl App {
     pub fn new() -> Self {
         Self {
             running: true,
-            task_list: TaskListState::default(),
+            active_widget: ActiveWidget::default(),
+            task_list1: TaskListState {
+                is_active: true,
+                ..Default::default()
+            },
+            task_list2: TaskListState::default(),
         }
     }
 
@@ -45,35 +57,29 @@ impl App {
         Ok(())
     }
 
+    fn set_active_widget(&mut self, active_widget: ActiveWidget) {
+        self.active_widget = active_widget;
+        match active_widget {
+            ActiveWidget::TaskList1 => {
+                self.task_list1.is_active = true;
+                self.task_list2.is_active = false;
+            }
+            ActiveWidget::TaskList2 => {
+                self.task_list1.is_active = false;
+                self.task_list2.is_active = true;
+            }
+        }
+    }
+
     fn render(&mut self, frame: &mut Frame) {
         let [left, right] =
             Layout::horizontal([Constraint::Percentage(49), Constraint::Percentage(51)])
                 .areas(frame.area());
 
-        let block = Block::new()
-            .title(Line::raw("TODO List").centered())
-            .borders(Borders::TOP)
-            .border_set(symbols::border::EMPTY);
-
-        let items: Vec<ListItem> = self
-            .task_list
-            .tasks
-            .iter()
-            .enumerate()
-            .map(|(_, todo_item)| ListItem::from(todo_item))
-            .collect();
-
-        let list = List::new(items)
-            .block(block)
-            .highlight_symbol(">")
-            .highlight_spacing(HighlightSpacing::Always);
-
-        let mut state = ListState::default();
-
         // We need to disambiguate this trait method as both `Widget` and `StatefulWidget` share the
         // same method name `render`.
-        frame.render_stateful_widget(list, left, &mut state);
-        frame.render_stateful_widget(TaskList::default(), right, &mut self.task_list);
+        frame.render_stateful_widget(TaskList::default(), left, &mut self.task_list1);
+        frame.render_stateful_widget(TaskList::default(), right, &mut self.task_list2);
         // frame.render_stateful_widget(TaskList::default(), left, &mut self.task_list);
     }
 
@@ -94,18 +100,36 @@ impl App {
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc | KeyCode::Char('q'))
             | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => self.quit(),
+            (_, KeyCode::Char('j')) => match self.active_widget {
+                ActiveWidget::TaskList1 => self.task_list1.focus_next(),
+                ActiveWidget::TaskList2 => self.task_list2.focus_next(),
+            },
+            (_, KeyCode::Char('k')) => match self.active_widget {
+                ActiveWidget::TaskList1 => self.task_list1.focus_previous(),
+                ActiveWidget::TaskList2 => self.task_list2.focus_previous(),
+            },
+            (_, KeyCode::Tab) => match self.active_widget {
+                ActiveWidget::TaskList1 => self.set_active_widget(ActiveWidget::TaskList2),
+                ActiveWidget::TaskList2 => self.set_active_widget(ActiveWidget::TaskList1),
+            },
+            (KeyModifiers::SHIFT, KeyCode::Tab) => match self.active_widget {
+                ActiveWidget::TaskList1 => self.set_active_widget(ActiveWidget::TaskList2),
+                ActiveWidget::TaskList2 => self.set_active_widget(ActiveWidget::TaskList1),
+            },
+            (_, KeyCode::Char(' ')) => match self.active_widget {
+                ActiveWidget::TaskList1 => self
+                    .task_list1
+                    .toggle_pick_task(self.task_list1.focused_task.unwrap()),
+                ActiveWidget::TaskList2 => self
+                    .task_list2
+                    .toggle_pick_task(self.task_list2.focused_task.unwrap()),
+            },
             _ => {}
         }
     }
 
     fn quit(&mut self) {
         self.running = false;
-    }
-}
-
-impl From<&Task> for ListItem<'_> {
-    fn from(task: &Task) -> Self {
-        ListItem::new(task.title.clone())
     }
 }
 

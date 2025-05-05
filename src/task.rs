@@ -1,7 +1,7 @@
-pub type TaskId = u32;
+pub type TaskId = usize;
 
-#[derive(Debug, Default)]
-enum TaskStatus {
+#[derive(Debug, Default, Clone, Copy)]
+pub enum TaskStatus {
     #[default]
     Backlog,
     Todo,
@@ -15,6 +15,8 @@ pub struct Task {
     pub title: String,
     pub description: String,
     pub status: TaskStatus,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 impl Task {
@@ -24,6 +26,8 @@ impl Task {
             title: title.to_string(),
             description: description.to_string(),
             status: TaskStatus::Backlog,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
         }
     }
 }
