@@ -1,5 +1,3 @@
-use std::default;
-
 use color_eyre::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
@@ -9,8 +7,10 @@ use ratatui::{
 
 mod task;
 mod task_list;
+mod toml;
 
 use task_list::{TaskList, TaskListState};
+use toml::{Store, TomlStore};
 
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
@@ -27,7 +27,6 @@ enum ActiveWidget {
     TaskList2,
 }
 
-#[derive(Debug, Default)]
 pub struct App {
     running: bool,
     active_widget: ActiveWidget,
@@ -37,14 +36,12 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
+        let store = TomlStore::new();
         Self {
             running: true,
             active_widget: ActiveWidget::default(),
-            task_list1: TaskListState {
-                is_active: true,
-                ..Default::default()
-            },
-            task_list2: TaskListState::default(),
+            task_list1: TaskListState::new(store.clone()),
+            task_list2: TaskListState::new(store),
         }
     }
 
@@ -108,11 +105,11 @@ impl App {
                 ActiveWidget::TaskList1 => self.task_list1.focus_previous(),
                 ActiveWidget::TaskList2 => self.task_list2.focus_previous(),
             },
-            (_, KeyCode::Tab) => match self.active_widget {
+            (KeyModifiers::SHIFT, KeyCode::Tab) => match self.active_widget {
                 ActiveWidget::TaskList1 => self.set_active_widget(ActiveWidget::TaskList2),
                 ActiveWidget::TaskList2 => self.set_active_widget(ActiveWidget::TaskList1),
             },
-            (KeyModifiers::SHIFT, KeyCode::Tab) => match self.active_widget {
+            (_, KeyCode::Tab) => match self.active_widget {
                 ActiveWidget::TaskList1 => self.set_active_widget(ActiveWidget::TaskList2),
                 ActiveWidget::TaskList2 => self.set_active_widget(ActiveWidget::TaskList1),
             },

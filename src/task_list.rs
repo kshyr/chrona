@@ -1,16 +1,15 @@
-use color_eyre::owo_colors::OwoColorize;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Style, Stylize, palette::tailwind::ZINC},
-    symbols,
+    style::{Color, Style, Stylize},
     text::Line,
-    widgets::{
-        Block, BorderType, Borders, HighlightSpacing, List, ListItem, ListState, StatefulWidget,
-    },
+    widgets::{Block, BorderType, HighlightSpacing, List, ListItem, ListState, StatefulWidget},
 };
 
-use crate::task::{Task, TaskId};
+use crate::{
+    task::{Task, TaskId},
+    toml::TomlStore,
+};
 
 #[derive(Debug)]
 pub struct TaskListState {
@@ -20,21 +19,20 @@ pub struct TaskListState {
     pub focused_task: Option<TaskId>,
     // ratatui
     pub list_state: ListState,
+    pub store: TomlStore,
 }
 
-impl Default for TaskListState {
-    fn default() -> Self {
+impl TaskListState {
+    pub fn new(store: TomlStore) -> Self {
         let focused_task = Some(0);
+
         Self {
             is_active: false,
-            tasks: vec![
-                Task::new("Task 1", ""),
-                Task::new("Task 2", ""),
-                Task::new("Task 3", ""),
-            ],
+            tasks: store.tasks.clone(),
             picked_tasks: Vec::new(),
             focused_task,
             list_state: ListState::default().with_selected(focused_task),
+            store,
         }
     }
 }
@@ -88,14 +86,8 @@ impl TaskListState {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TaskList;
-
-impl Default for TaskList {
-    fn default() -> Self {
-        Self {}
-    }
-}
 
 impl StatefulWidget for TaskList {
     type State = TaskListState;

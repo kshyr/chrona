@@ -1,6 +1,8 @@
+use serde::Deserialize;
+
 pub type TaskId = usize;
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, Deserialize)]
 pub enum TaskStatus {
     #[default]
     Backlog,
@@ -9,7 +11,7 @@ pub enum TaskStatus {
     Done,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Deserialize, Clone)]
 pub struct Task {
     pub id: TaskId,
     pub title: String,
