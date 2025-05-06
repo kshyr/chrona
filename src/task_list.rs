@@ -1,9 +1,11 @@
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Style, Stylize},
+    style::{Color, Modifier, Style, Styled, Stylize},
     text::Line,
-    widgets::{Block, BorderType, HighlightSpacing, List, ListItem, ListState, StatefulWidget},
+    widgets::{
+        Block, BorderType, HighlightSpacing, List, ListItem, ListState, Padding, StatefulWidget,
+    },
 };
 
 use crate::{
@@ -15,24 +17,20 @@ use crate::{
 pub struct TaskListState {
     pub is_active: bool,
     pub tasks: Vec<Task>,
-    pub picked_tasks: Vec<TaskId>,
-    pub focused_task: Option<TaskId>,
+    pub picked_tasks: Vec<usize>,
     // ratatui
     pub list_state: ListState,
     pub store: TomlStore,
 }
 
 impl TaskListState {
-    pub fn new(store: TomlStore) -> Self {
-        let focused_task = Some(0);
-
+    pub fn new(store: TomlStore, is_active: bool) -> Self {
         Self {
-            is_active: false,
             tasks: store.tasks.clone(),
             picked_tasks: Vec::new(),
-            focused_task,
-            list_state: ListState::default().with_selected(focused_task),
+            list_state: ListState::default().with_selected(Some(0)),
             store,
+            is_active,
         }
     }
 }
@@ -67,7 +65,6 @@ impl TaskListState {
             None => 0,
         };
         self.list_state.select(Some(i));
-        self.focused_task = Some(i);
     }
 
     pub fn focus_previous(&mut self) {
@@ -82,7 +79,14 @@ impl TaskListState {
             None => 0,
         };
         self.list_state.select(Some(i));
-        self.focused_task = Some(i);
+    }
+
+    pub fn focus_current(&mut self) {
+        let i = match self.list_state.selected() {
+            Some(i) => i,
+            None => 0,
+        };
+        self.list_state.select(Some(i));
     }
 }
 
@@ -93,7 +97,7 @@ impl StatefulWidget for TaskList {
     type State = TaskListState;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        let mut border_style = Style::default().bold();
+        let mut border_style = Style::default();
         if !state.is_active {
             border_style = border_style.dim();
         }
@@ -105,48 +109,35 @@ impl StatefulWidget for TaskList {
             } else {
                 BorderType::Plain
             })
-            .border_style(border_style);
+            .border_style(border_style)
+            .padding(Padding::proportional(1));
 
         let items: Vec<ListItem> = state
             .tasks
             .iter()
             .enumerate()
             .map(|(i, task)| {
-                let mut style = Style::default().not_bold();
-
-                if let Some(focused_task) = state.focused_task {
-                    if i == focused_task {
-                        style = style.fg(Color::Yellow).bold();
-                    }
-                }
-
                 let prefix = if state.picked_tasks.contains(&i) {
                     " [*] "
                 } else {
                     " [ ] "
                 };
 
-                let styled_task = Task {
-                    description: task.description.to_owned(),
-                    status: task.status,
-                    title: format!("{}{}", prefix, task.title),
-                    ..*task
-                };
-                ListItem::from(styled_task).style(style).bold()
+                let item_text = format!("{}{}", prefix, task.title);
+                ListItem::new(item_text)
             })
             .collect();
 
         let list = List::new(items)
             .block(block)
             .highlight_symbol(">")
-            .highlight_spacing(HighlightSpacing::Always);
+            .highlight_spacing(HighlightSpacing::Always)
+            .highlight_style(
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::Yellow),
+            );
 
         list.render(area, buf, &mut state.list_state);
-    }
-}
-
-impl From<Task> for ListItem<'_> {
-    fn from(task: Task) -> Self {
-        ListItem::new(task.title.clone())
     }
 }

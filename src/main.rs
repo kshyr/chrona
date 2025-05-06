@@ -3,6 +3,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout},
+    widgets::Clear,
 };
 
 mod task;
@@ -37,11 +38,14 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         let store = TomlStore::new();
+        let mut task_list1 = TaskListState::new(store.clone(), true);
+        task_list1.focus_current();
+        let task_list2 = TaskListState::new(store.clone(), false);
         Self {
             running: true,
-            active_widget: ActiveWidget::default(),
-            task_list1: TaskListState::new(store.clone()),
-            task_list2: TaskListState::new(store),
+            active_widget: ActiveWidget::TaskList1,
+            task_list1,
+            task_list2,
         }
     }
 
@@ -75,7 +79,9 @@ impl App {
 
         // We need to disambiguate this trait method as both `Widget` and `StatefulWidget` share the
         // same method name `render`.
+        frame.render_widget(Clear, left);
         frame.render_stateful_widget(TaskList::default(), left, &mut self.task_list1);
+        frame.render_widget(Clear, right);
         frame.render_stateful_widget(TaskList::default(), right, &mut self.task_list2);
         // frame.render_stateful_widget(TaskList::default(), left, &mut self.task_list);
     }
@@ -97,11 +103,11 @@ impl App {
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc | KeyCode::Char('q'))
             | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => self.quit(),
-            (_, KeyCode::Char('j')) => match self.active_widget {
+            (_, KeyCode::Char('j')) | (_, KeyCode::Down) => match self.active_widget {
                 ActiveWidget::TaskList1 => self.task_list1.focus_next(),
                 ActiveWidget::TaskList2 => self.task_list2.focus_next(),
             },
-            (_, KeyCode::Char('k')) => match self.active_widget {
+            (_, KeyCode::Char('k')) | (_, KeyCode::Up) => match self.active_widget {
                 ActiveWidget::TaskList1 => self.task_list1.focus_previous(),
                 ActiveWidget::TaskList2 => self.task_list2.focus_previous(),
             },
@@ -116,10 +122,10 @@ impl App {
             (_, KeyCode::Char(' ')) => match self.active_widget {
                 ActiveWidget::TaskList1 => self
                     .task_list1
-                    .toggle_pick_task(self.task_list1.focused_task.unwrap()),
+                    .toggle_pick_task(self.task_list1.list_state.selected().unwrap()),
                 ActiveWidget::TaskList2 => self
                     .task_list2
-                    .toggle_pick_task(self.task_list2.focused_task.unwrap()),
+                    .toggle_pick_task(self.task_list2.list_state.selected().unwrap()),
             },
             _ => {}
         }
