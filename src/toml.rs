@@ -1,10 +1,9 @@
-use std::{error, fs, path::PathBuf};
+use std::{fs, path::PathBuf};
 
 use color_eyre::eyre;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    App,
     store::{Store, get_config_dir},
     task::{Task, TaskId},
 };
@@ -48,18 +47,24 @@ struct TomlStoreFile {
 impl TomlStore {
     pub fn new() -> color_eyre::Result<Self> {
         let mut path = get_config_dir()?;
-        // Ensure the directory exists
+
         fs::create_dir_all(&path)?;
         path.push("tasks.toml");
         let mut store = Self {
             file_path: path,
             tasks: Vec::new(),
         };
-        store.tasks = store.load_all_tasks().unwrap();
+        store.tasks = store.load_all_tasks().unwrap_or_else(|err| {
+            eprintln!("Failed to load tasks, starting with example: {}", err);
+            if let Ok(example_store) = toml::from_str::<TomlStoreFile>(TOML_TASKS_EXAMPLE) {
+                example_store.tasks
+            } else {
+                Vec::new()
+            }
+        });
         Ok(store)
     }
 
-    /// Ensures the directory for the tasks file exists.
     fn ensure_directory_exists(&self) -> color_eyre::Result<()> {
         if let Some(parent_dir) = self.file_path.parent() {
             fs::create_dir_all(parent_dir)?;
@@ -70,44 +75,63 @@ impl TomlStore {
 
 impl Store for TomlStore {
     fn load_all_tasks(&mut self) -> color_eyre::Result<Vec<Task>> {
-        if !self.tasks.is_empty() {
+        if self.file_path.exists() {
+            let content = fs::read_to_string(&self.file_path)?;
+            let store: TomlStoreFile = toml::from_str(&content)?;
+            self.tasks = store.tasks;
+            return Ok(self.tasks.clone());
+        } else {
+            println!(
+                "Tasks file not found at {:?}, loading example tasks.",
+                self.file_path
+            );
+            let store: TomlStoreFile = match toml::from_str(TOML_TASKS_EXAMPLE) {
+                Ok(tasks_data) => tasks_data,
+                Err(err) => {
+                    eprintln!("Error parsing example tasks: {}", err);
+                    return Err(eyre::eyre!("Failed to parse example tasks: {}", err));
+                }
+            };
+            self.tasks = store.tasks.clone();
+            if let Err(e) = self.save_all_tasks(self.tasks.clone()) {
+                eprintln!(
+                    "Could not save initial example tasks to {:?}: {}",
+                    self.file_path, e
+                );
+            }
             return Ok(self.tasks.clone());
         }
-
-        let store: TomlStoreFile = match toml::from_str(TOML_TASKS_EXAMPLE) {
-            Ok(tasks) => tasks,
-            Err(err) => {
-                eprintln!("Error loading tasks: {}", err);
-                TomlStoreFile { tasks: Vec::new() }
-            }
-        };
-        Ok(store.tasks)
     }
 
     fn save_all_tasks(&mut self, tasks: Vec<Task>) -> color_eyre::Result<()> {
         self.ensure_directory_exists()?;
-        let toml_content = toml::to_string(&TomlStoreFile { tasks })?;
+        let toml_content = toml::to_string(&TomlStoreFile {
+            tasks: tasks.clone(),
+        })?;
         fs::write(&self.file_path, toml_content)?;
+        self.tasks = tasks;
         Ok(())
     }
 
     fn append_task(&mut self, task: Task) -> color_eyre::Result<()> {
-        self.tasks.push(task);
-        self.save_all_tasks(self.tasks.clone())
+        let mut current_tasks = self.load_all_tasks()?;
+        current_tasks.push(task);
+        self.save_all_tasks(current_tasks)
     }
 
     fn delete_task(&mut self, id: TaskId) -> color_eyre::Result<()> {
-        self.tasks.retain(|task| task.id != id);
-        self.save_all_tasks(self.tasks.clone())
+        let mut current_tasks = self.load_all_tasks()?;
+        current_tasks.retain(|task| task.id != id);
+        self.save_all_tasks(current_tasks)
     }
 
     fn update_task(&mut self, id: TaskId, updated_task: Task) -> color_eyre::Result<()> {
-        for task in self.tasks.iter_mut() {
-            if task.id == id {
-                *task = updated_task.clone();
-                return Ok(());
-            }
+        let mut current_tasks = self.load_all_tasks()?;
+        if let Some(task_to_update) = current_tasks.iter_mut().find(|task| task.id == id) {
+            *task_to_update = updated_task;
+            self.save_all_tasks(current_tasks)
+        } else {
+            Err(eyre::eyre!("Task with ID {} not found for update", id))
         }
-        Err(eyre::eyre!("Task with ID {} not found for update", id))
     }
 }

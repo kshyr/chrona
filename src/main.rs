@@ -1,19 +1,23 @@
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     DefaultTerminal, Frame,
+    crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     layout::{Constraint, Layout},
-    widgets::Clear,
+    style::{Color, Style},
+    widgets::{Clear, Paragraph},
 };
+use tui_input::{Input, backend::crossterm::to_input_request};
 
+mod help;
 mod store;
 mod task;
 mod task_form;
 mod task_list;
 mod toml;
 
+use help::{HelpScreen, HelpState};
 use store::{Store, get_config_dir};
 use task::Task;
-use task_form::{TaskForm, TaskFormState};
+use task_form::{ActiveFormField, FormMode, TaskForm, TaskFormState};
 use task_list::{TaskList, TaskListState};
 use toml::TomlStore;
 
@@ -25,7 +29,7 @@ fn main() -> color_eyre::Result<()> {
     result
 }
 
-#[derive(Default, Copy, Clone)]
+#[derive(Default, Copy, Clone, PartialEq)]
 enum ActiveWidget {
     #[default]
     TaskList1,
@@ -38,32 +42,63 @@ pub struct App {
     task_list1: TaskListState,
     task_list2: TaskListState,
     task_form: TaskFormState,
+    help_state: HelpState,
     tasks: Vec<Task>,
     store: TomlStore,
+    status_message: Option<(String, Color)>,
 }
 
 impl App {
     pub fn new() -> Self {
-        let mut store = TomlStore::new().unwrap();
-        let mut tasks = store.load_all_tasks().unwrap();
-        let data_dir = get_config_dir();
-        tasks.push(Task {
-            title: data_dir.unwrap().into_os_string().into_string().unwrap(),
-            ..Default::default()
+        let mut store = TomlStore::new().unwrap_or_else(|e| {
+            eprintln!(
+                "Failed to initialize TomlStore: {}. Using an empty store.",
+                e
+            );
+            TomlStore::new().expect("Fallback TomlStore creation failed")
         });
-        store.save_all_tasks(tasks.clone()).unwrap();
+        let mut tasks = store.load_all_tasks().unwrap_or_else(|e| {
+            eprintln!("Failed to load tasks: {}. Starting with an empty list.", e);
+            Vec::new()
+        });
+
+        if let Ok(data_dir_result) = get_config_dir() {
+            if tasks
+                .iter()
+                .find(|t| t.title.contains("CHRONA_CONFIG_DIR"))
+                .is_none()
+            {
+                tasks.push(Task {
+                    title: format!(
+                        "Config Dir: {:?}",
+                        data_dir_result
+                            .into_os_string()
+                            .into_string()
+                            .unwrap_or_default()
+                    ),
+                    ..Default::default()
+                });
+            }
+        }
+
+        store.save_all_tasks(tasks.clone()).unwrap_or_else(|e| {
+            eprintln!("Failed to save initial tasks: {}", e);
+        });
 
         let task_list1 = TaskListState::new(true);
         let task_list2 = TaskListState::new(false);
         let task_form = TaskFormState::new();
+        let help_state = HelpState::new();
         Self {
             running: true,
             active_widget: ActiveWidget::TaskList1,
             task_list1,
             task_list2,
             task_form,
+            help_state,
             tasks,
             store,
+            status_message: None,
         }
     }
 
@@ -91,27 +126,51 @@ impl App {
     }
 
     fn render(&mut self, frame: &mut Frame) {
+        let [main_area, status_bar] =
+            Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
+
         let [left, right] =
             Layout::horizontal([Constraint::Percentage(49), Constraint::Percentage(51)])
-                .areas(frame.area());
+                .areas(main_area);
 
-        // We need to disambiguate this trait method as both `Widget` and `StatefulWidget` share the
-        // same method name `render`.
         frame.render_widget(Clear, left);
         frame.render_stateful_widget(TaskList::new(&self.tasks), left, &mut self.task_list1);
         frame.render_widget(Clear, right);
         frame.render_stateful_widget(TaskList::new(&self.tasks), right, &mut self.task_list2);
 
-        frame.render_stateful_widget(TaskForm {}, frame.area(), &mut self.task_form);
-        // frame.render_stateful_widget(TaskList::default(), left, &mut self.task_list);
+        frame.render_stateful_widget(TaskForm, frame.area(), &mut self.task_form);
+        frame.render_stateful_widget(HelpScreen, frame.area(), &mut self.help_state);
+
+        if let Some((message, color)) = &self.status_message {
+            frame.render_widget(
+                Paragraph::new(message.clone()).style(Style::default().fg(*color)),
+                status_bar,
+            );
+        } else {
+            frame.render_widget(
+                Paragraph::new("Press ? for help").style(Style::default().fg(Color::DarkGray)),
+                status_bar,
+            );
+        }
     }
 
-    /// If your application needs to perform work in between handling events, you can use the
-    /// [`event::poll`] function to check if there are any events available with a timeout.
     fn handle_crossterm_events(&mut self) -> color_eyre::Result<()> {
-        match event::read()? {
-            // it's important to check KeyEventKind::Press to avoid handling key release events
-            Event::Key(key) if key.kind == KeyEventKind::Press => self.on_key_event(key),
+        let event = event::read()?;
+
+        match event {
+            Event::Key(key) if key.kind == KeyEventKind::Press => {
+                if self.task_form.is_modal_open {
+                    self.on_input_event(key, &event);
+                } else if self.help_state.visible {
+                    if key.code == KeyCode::Esc || key.code == KeyCode::Char('?') {
+                        self.help_state.hide();
+                    }
+                } else {
+                    self.on_key_event(key);
+                }
+
+                self.status_message = None;
+            }
             Event::Mouse(_) => {}
             Event::Resize(_, _) => {}
             _ => {}
@@ -119,84 +178,114 @@ impl App {
         Ok(())
     }
 
+    fn on_input_event(&mut self, key: KeyEvent, event: &Event) {
+        match key.code {
+            KeyCode::Esc => {
+                self.task_form.is_modal_open = false;
+
+                match self.active_widget {
+                    ActiveWidget::TaskList1 => {
+                        self.task_list1
+                            .list_state
+                            .select(self.task_list1.last_selected);
+                    }
+                    ActiveWidget::TaskList2 => {
+                        self.task_list2
+                            .list_state
+                            .select(self.task_list2.last_selected);
+                    }
+                }
+            }
+            KeyCode::Tab => {
+                if key.modifiers.contains(KeyModifiers::SHIFT) {
+                    self.task_form.prev_field();
+                } else {
+                    self.task_form.next_field();
+                }
+            }
+            KeyCode::Enter => {
+                self.submit_form();
+            }
+            KeyCode::Char(' ') if self.task_form.active_field == ActiveFormField::Status => {
+                self.task_form.cycle_status();
+            }
+            _ => {
+                if self.task_form.active_field != ActiveFormField::Status {
+                    let active_form_input: &mut Input = match self.task_form.active_field {
+                        ActiveFormField::Title => &mut self.task_form.title_input,
+                        ActiveFormField::Description => &mut self.task_form.description_input,
+                        _ => unreachable!(),
+                    };
+
+                    if let Some(req) = to_input_request(event) {
+                        let _ = active_form_input.handle(req);
+                    }
+                }
+            }
+        }
+    }
+
     fn on_key_event(&mut self, key: KeyEvent) {
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc | KeyCode::Char('q'))
             | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => self.quit(),
             (_, KeyCode::Char('j')) | (_, KeyCode::Down) => {
-                if self.task_form.is_modal_open {
-                    return;
-                }
                 match self.active_widget {
-                    ActiveWidget::TaskList1 => {
-                        if self.task_form.is_modal_open {
-                            return;
-                        }
-                        self.task_list1.list_state.select_next()
-                    }
+                    ActiveWidget::TaskList1 => self.task_list1.list_state.select_next(),
                     ActiveWidget::TaskList2 => self.task_list2.list_state.select_next(),
                 };
             }
             (_, KeyCode::Char('k')) | (_, KeyCode::Up) => {
-                if self.task_form.is_modal_open {
-                    return;
-                }
                 match self.active_widget {
-                    ActiveWidget::TaskList1 => {
-                        if self.task_form.is_modal_open {
-                            return;
-                        }
-                        self.task_list1.list_state.select_previous()
-                    }
+                    ActiveWidget::TaskList1 => self.task_list1.list_state.select_previous(),
                     ActiveWidget::TaskList2 => self.task_list2.list_state.select_previous(),
                 };
             }
             (KeyModifiers::SHIFT, KeyCode::Tab) => {
-                if self.task_form.is_modal_open {
-                    return;
-                }
                 match self.active_widget {
                     ActiveWidget::TaskList1 => self.set_active_widget(ActiveWidget::TaskList2),
                     ActiveWidget::TaskList2 => self.set_active_widget(ActiveWidget::TaskList1),
                 };
             }
             (_, KeyCode::Tab) => {
-                if self.task_form.is_modal_open {
-                    return;
-                }
                 match self.active_widget {
                     ActiveWidget::TaskList1 => self.set_active_widget(ActiveWidget::TaskList2),
                     ActiveWidget::TaskList2 => self.set_active_widget(ActiveWidget::TaskList1),
                 };
             }
             (_, KeyCode::Char(' ')) => {
-                if self.task_form.is_modal_open {
-                    return;
-                }
                 match self.active_widget {
                     ActiveWidget::TaskList1 => {
-                        self.task_list1
-                            .toggle_pick_task(self.task_list1.list_state.selected().unwrap());
+                        if let Some(selected_idx) = self.task_list1.list_state.selected() {
+                            self.task_list1.toggle_pick_task(selected_idx);
+                        }
                     }
-                    ActiveWidget::TaskList2 => self
-                        .task_list2
-                        .toggle_pick_task(self.task_list2.list_state.selected().unwrap()),
+                    ActiveWidget::TaskList2 => {
+                        if let Some(selected_idx) = self.task_list2.list_state.selected() {
+                            self.task_list2.toggle_pick_task(selected_idx);
+                        }
+                    }
                 };
             }
-            (_, KeyCode::Char('a')) => match self.active_widget {
-                ActiveWidget::TaskList1 => {
-                    if let Some(i) = self.task_list1.list_state.selected() {
-                        self.task_list1.last_selected = Some(i);
-                        self.task_list1.list_state.select(None);
-                    } else {
-                        self.task_list1
-                            .list_state
-                            .select(self.task_list1.last_selected);
-                    }
-                    self.task_form.is_modal_open = !self.task_form.is_modal_open
+            (_, KeyCode::Char('a')) => {
+                self.task_form.open_for_create();
+                self.save_selection_state();
+            }
+            (_, KeyCode::Char('e')) => {
+                if let Some(task) = self.get_selected_task() {
+                    self.task_form.open_for_edit(&task);
+                    self.save_selection_state();
+                } else {
+                    self.status_message =
+                        Some(("No task selected to edit".to_string(), Color::Red));
                 }
-                ActiveWidget::TaskList2 => {}
-            },
+            }
+            (_, KeyCode::Char('d')) => {
+                self.delete_selected_task();
+            }
+            (_, KeyCode::Char('?')) => {
+                self.help_state.toggle();
+            }
             _ => {}
         }
     }
@@ -204,10 +293,149 @@ impl App {
     fn quit(&mut self) {
         self.running = false;
     }
-}
 
-// impl Widget for &App {
-//     fn render(self, area: Rect, buf: &mut Buffer) {
-//         TasksWidget::default().render(area, buf, &mut self.widgets.task_list);
-//     }
-// }
+    fn save_selection_state(&mut self) {
+        match self.active_widget {
+            ActiveWidget::TaskList1 => {
+                if let Some(i) = self.task_list1.list_state.selected() {
+                    self.task_list1.last_selected = Some(i);
+                }
+                self.task_list1.list_state.select(None);
+            }
+            ActiveWidget::TaskList2 => {
+                if let Some(i) = self.task_list2.list_state.selected() {
+                    self.task_list2.last_selected = Some(i);
+                }
+                self.task_list2.list_state.select(None);
+            }
+        }
+    }
+
+    fn get_selected_task(&self) -> Option<Task> {
+        let selected_idx = match self.active_widget {
+            ActiveWidget::TaskList1 => self.task_list1.list_state.selected()?,
+            ActiveWidget::TaskList2 => self.task_list2.list_state.selected()?,
+        };
+
+        self.tasks.get(selected_idx).cloned()
+    }
+
+    fn delete_selected_task(&mut self) {
+        let selected_idx = match self.active_widget {
+            ActiveWidget::TaskList1 => self.task_list1.list_state.selected(),
+            ActiveWidget::TaskList2 => self.task_list2.list_state.selected(),
+        };
+
+        if let Some(idx) = selected_idx {
+            if idx < self.tasks.len() {
+                self.tasks.remove(idx);
+
+                match self.store.save_all_tasks(self.tasks.clone()) {
+                    Ok(_) => {
+                        self.status_message =
+                            Some(("Task deleted successfully".to_string(), Color::Green));
+
+                        if idx > 0 {
+                            match self.active_widget {
+                                ActiveWidget::TaskList1 => {
+                                    self.task_list1.list_state.select(Some(idx - 1))
+                                }
+                                ActiveWidget::TaskList2 => {
+                                    self.task_list2.list_state.select(Some(idx - 1))
+                                }
+                            }
+                        } else if !self.tasks.is_empty() {
+                            match self.active_widget {
+                                ActiveWidget::TaskList1 => {
+                                    self.task_list1.list_state.select(Some(0))
+                                }
+                                ActiveWidget::TaskList2 => {
+                                    self.task_list2.list_state.select(Some(0))
+                                }
+                            }
+                        } else {
+                            match self.active_widget {
+                                ActiveWidget::TaskList1 => self.task_list1.list_state.select(None),
+                                ActiveWidget::TaskList2 => self.task_list2.list_state.select(None),
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        self.status_message =
+                            Some((format!("Failed to delete task: {}", e), Color::Red));
+                    }
+                }
+            }
+        } else {
+            self.status_message = Some(("No task selected to delete".to_string(), Color::Red));
+        }
+    }
+
+    fn submit_form(&mut self) {
+        match &self.task_form.mode {
+            FormMode::Create => match TaskForm::create_task(&self.task_form) {
+                Ok(task) => {
+                    self.tasks.push(task);
+                    self.store
+                        .save_all_tasks(self.tasks.clone())
+                        .unwrap_or_else(|e| {
+                            eprintln!("Failed to save tasks: {}", e);
+                        });
+                    self.task_form.is_modal_open = false;
+
+                    match self.active_widget {
+                        ActiveWidget::TaskList1 => {
+                            self.task_list1
+                                .list_state
+                                .select(self.task_list1.last_selected);
+                        }
+                        ActiveWidget::TaskList2 => {
+                            self.task_list2
+                                .list_state
+                                .select(self.task_list2.last_selected);
+                        }
+                    }
+
+                    self.status_message =
+                        Some(("Task created successfully".to_string(), Color::Green));
+                }
+                Err(err) => {
+                    self.task_form.error_message = Some(err);
+                }
+            },
+            FormMode::Edit(task_id) => match TaskForm::update_task(&self.task_form, *task_id) {
+                Ok(updated_task) => {
+                    if let Some(task) = self.tasks.iter_mut().find(|t| t.id == *task_id) {
+                        *task = updated_task;
+                    }
+
+                    self.store
+                        .save_all_tasks(self.tasks.clone())
+                        .unwrap_or_else(|e| {
+                            eprintln!("Failed to save tasks: {}", e);
+                        });
+                    self.task_form.is_modal_open = false;
+
+                    match self.active_widget {
+                        ActiveWidget::TaskList1 => {
+                            self.task_list1
+                                .list_state
+                                .select(self.task_list1.last_selected);
+                        }
+                        ActiveWidget::TaskList2 => {
+                            self.task_list2
+                                .list_state
+                                .select(self.task_list2.last_selected);
+                        }
+                    }
+
+                    self.status_message =
+                        Some(("Task updated successfully".to_string(), Color::Green));
+                }
+                Err(err) => {
+                    self.task_form.error_message = Some(err);
+                }
+            },
+        }
+    }
+}

@@ -1,21 +1,16 @@
 use ratatui::{
-    style::{Color, Modifier, Style, Stylize},
-    text::Line,
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
     widgets::{
         Block, BorderType, HighlightSpacing, List, ListItem, ListState, Padding, StatefulWidget,
     },
 };
 
-use crate::{
-    store::Store,
-    task::{Task, TaskId},
-    toml::TomlStore,
-};
+use crate::task::{Task, TaskId};
 
 pub struct TaskListState {
     pub is_active: bool,
     pub picked_tasks: Vec<usize>,
-    // ratatui
     pub list_state: ListState,
     pub last_selected: Option<usize>,
 }
@@ -41,7 +36,7 @@ impl TaskListState {
 }
 
 pub struct TaskList<'a> {
-    tasks: &'a [Task], // Borrows the tasks to display
+    tasks: &'a [Task],
 }
 
 impl<'a> TaskList<'a> {
@@ -59,20 +54,41 @@ impl<'a> StatefulWidget for TaskList<'a> {
         buf: &mut ratatui::prelude::Buffer,
         state: &mut Self::State,
     ) {
-        let mut border_style = Style::default();
-        if !state.is_active {
-            border_style = border_style.dim();
-        }
+        let title = if state.is_active {
+            Line::from(vec![
+                Span::raw("Tasks ("),
+                Span::styled(
+                    format!("{}", self.tasks.len()),
+                    Style::default().fg(Color::Yellow),
+                ),
+                Span::raw(")"),
+                Span::styled(
+                    " [a: add] [e: edit] [d: delete] [space: select]",
+                    Style::default()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::ITALIC),
+                ),
+            ])
+        } else {
+            Line::from(vec![
+                Span::raw("Tasks ("),
+                Span::raw(format!("{}", self.tasks.len())),
+                Span::raw(")"),
+            ])
+        };
 
-        let block = Block::bordered()
-            .title(Line::raw("Tasks").centered())
+        let mut block = Block::bordered()
+            .title(title.centered())
             .border_type(if state.is_active {
                 BorderType::Thick
             } else {
                 BorderType::Plain
             })
-            .border_style(border_style)
-            .padding(Padding::proportional(1));
+            .padding(Padding::vertical(1));
+
+        if !state.is_active {
+            block = block.border_style(Style::default().add_modifier(Modifier::DIM));
+        }
 
         let items: Vec<ListItem> = self
             .tasks
@@ -85,19 +101,45 @@ impl<'a> StatefulWidget for TaskList<'a> {
                     " [ ] "
                 };
 
-                let item_text = format!("{}{}", prefix, task.title);
-                ListItem::new(item_text)
+                let created_at = task.created_at.format("%Y-%m-%d %H:%M");
+
+                let status_style = match task.status {
+                    crate::task::TaskStatus::Backlog => Style::default().fg(Color::Gray),
+                    crate::task::TaskStatus::Todo => Style::default().fg(Color::Blue),
+                    crate::task::TaskStatus::InProgress => Style::default().fg(Color::Yellow),
+                    crate::task::TaskStatus::Done => Style::default().fg(Color::Green),
+                };
+
+                let status_text = format!("{:?}", task.status);
+
+                let line = Line::from(vec![
+                    Span::raw(prefix),
+                    Span::styled(
+                        task.title.clone(),
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(" "),
+                    Span::styled(format!("[{}]", status_text), status_style),
+                    Span::raw(" "),
+                    Span::styled(
+                        format!("({})", created_at),
+                        Style::default().add_modifier(Modifier::DIM),
+                    ),
+                ]);
+
+                ListItem::new(line)
             })
             .collect();
 
         let list = List::new(items)
             .block(block)
-            .highlight_symbol(">")
+            .highlight_symbol("→ ")
             .highlight_spacing(HighlightSpacing::Always)
             .highlight_style(
                 Style::default()
                     .add_modifier(Modifier::BOLD)
-                    .fg(Color::Yellow),
+                    .fg(Color::Yellow)
+                    .bg(Color::DarkGray),
             );
 
         list.render(area, buf, &mut state.list_state);
