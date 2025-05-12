@@ -23,7 +23,7 @@ This architecture allows for flexibility in layout while maintaining a cohesive 
 
 ## Page Types & Layouts
 
-### 1. Dashboard 
+### 1. Dashboard
 The central hub showing your current work context:
 
 ```
@@ -47,7 +47,7 @@ The central hub showing your current work context:
 └─────────────────────────────────────────────────────────┘
 ```
 
-### 2. Planning 
+### 2. Planning
 Comprehensive task management with details:
 
 ```
@@ -143,19 +143,19 @@ Visualization of productivity data:
 ### Global Keyboard Shortcuts
 - `?`: Toggle help screen
 - `q`, `Esc`: Exit application or cancel current action
-- `Tab`/`Shift+Tab`: Navigate between widgets
-- `F1-F4`: Switch between pages
+- `Tab`/`Shift+Tab` or `[0-9]`: Navigate between widgets
+- `Shift+[0-9]`: Switch between pages
 
 ### Task Navigation
 - `j`/`k` or arrow keys: Move selection
-- `Space`: Toggle selection/mark task
+- `Space`: Toggle picked task(s)
 - `a`: Add new task
 - `e`: Edit selected task
 - `d`: Delete selected task
 - `/`: Search tasks
 
 ### Time Tracking
-- `t`: Start timer on selected task
+- `t`: Start timer on selected tasks
 - `p`: Pause/resume current session
 - `s`: Stop current session
 - `m`: Switch timer mode (elapsed/remaining)
@@ -163,7 +163,7 @@ Visualization of productivity data:
 ### Form Controls
 - `Tab`/`Shift+Tab`: Navigate between fields
 - `Enter`: Submit/confirm
-- `Esc`: Cancel
+- `Esc`: Cancel (close dialog)
 
 ## Visual Design
 

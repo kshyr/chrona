@@ -4,7 +4,7 @@ use color_eyre::eyre;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    store::{Store, get_config_dir},
+    store::{Store, get_data_dir},
     task::{Task, TaskId},
 };
 
@@ -46,7 +46,7 @@ struct TomlStoreFile {
 
 impl TomlStore {
     pub fn new() -> color_eyre::Result<Self> {
-        let mut path = get_config_dir()?;
+        let mut path = get_data_dir()?;
 
         fs::create_dir_all(&path)?;
         path.push("tasks.toml");

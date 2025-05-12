@@ -1,6 +1,6 @@
 use ratatui::{
     buffer::Buffer,
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     widgets::{Block, BorderType, Borders, Clear, Paragraph, StatefulWidget, Widget},
 };
@@ -238,9 +238,9 @@ impl TaskForm {
             .render(chunks[1], buf);
     }
 
-    fn centered_text(&self) -> Paragraph<'static> {
-        Paragraph::new("").alignment(Alignment::Center)
-    }
+    // fn centered_text(&self) -> Paragraph<'static> {
+    //     Paragraph::new("").alignment(Alignment::Center)
+    // }
 
     fn render_field(
         &self,
