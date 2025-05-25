@@ -7,25 +7,14 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Paragraph},
 };
-use std::fmt::{Display, Formatter};
+use strum_macros::{Display, EnumIter};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumIter)]
 pub enum PageType {
     Dashboard,
     Planning,
     Focus,
     Stats,
-}
-
-impl Display for PageType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            PageType::Dashboard => write!(f, "Dashboard"),
-            PageType::Planning => write!(f, "Planning"),
-            PageType::Focus => write!(f, "Focus"),
-            PageType::Stats => write!(f, "Stats"),
-        }
-    }
 }
 
 pub trait Page {
@@ -46,12 +35,13 @@ pub trait Page {
                 Span::from("] "),
                 Span::from(title).bold(),
             ]))
-            .border_type(BorderType::Thick);
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().yellow());
 
         if !is_active {
             block = block
                 .border_style(Style::default().add_modifier(Modifier::DIM))
-                .border_type(BorderType::Plain)
+                .border_type(BorderType::Rounded)
                 .dim();
         }
 
@@ -71,9 +61,9 @@ pub trait Page {
 
     fn select_widget(&mut self, index: usize);
 
-    fn on_activate(&mut self) {}
+    fn on_activate(&mut self);
 
-    fn on_deactivate(&mut self) {}
+    fn on_deactivate(&mut self);
 }
 
 pub enum PageAction {
@@ -117,10 +107,10 @@ impl PageManager {
 
     pub fn handle_key_event(&mut self, key: KeyEvent) -> Option<PageAction> {
         let global_action = match (key.modifiers, key.code) {
-            (_, KeyCode::Char('!')) => Some(PageAction::NavigateTo(PageType::Dashboard)),
-            (_, KeyCode::Char('@')) => Some(PageAction::NavigateTo(PageType::Planning)),
-            (_, KeyCode::Char('#')) => Some(PageAction::NavigateTo(PageType::Focus)),
-            (_, KeyCode::Char('$')) => Some(PageAction::NavigateTo(PageType::Stats)),
+            (_, KeyCode::Char('D')) => Some(PageAction::NavigateTo(PageType::Dashboard)),
+            (_, KeyCode::Char('P')) => Some(PageAction::NavigateTo(PageType::Planning)),
+            (_, KeyCode::Char('F')) => Some(PageAction::NavigateTo(PageType::Focus)),
+            (_, KeyCode::Char('S')) => Some(PageAction::NavigateTo(PageType::Stats)),
 
             (_, KeyCode::Char('1')) => Some(PageAction::SelectWidget(0)),
             (_, KeyCode::Char('2')) => Some(PageAction::SelectWidget(1)),

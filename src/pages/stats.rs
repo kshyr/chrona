@@ -71,11 +71,6 @@ impl Page for StatsPage {
 
     fn handle_key_event(&mut self, key: KeyEvent) -> Option<PageAction> {
         match (key.modifiers, key.code) {
-            (_, KeyCode::F(1)) => Some(PageAction::NavigateTo(PageType::Dashboard)),
-            (_, KeyCode::F(2)) => Some(PageAction::NavigateTo(PageType::Planning)),
-            (_, KeyCode::F(3)) => Some(PageAction::NavigateTo(PageType::Focus)),
-            (_, KeyCode::F(4)) => Some(PageAction::NavigateTo(PageType::Stats)),
-
             (modifiers, KeyCode::Tab) => {
                 if modifiers.contains(KeyModifiers::SHIFT) {
                     self.active_widget = match self.active_widget {

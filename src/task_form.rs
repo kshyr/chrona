@@ -6,6 +6,8 @@ use ratatui::{
 };
 use tui_input::Input as TextInput;
 
+use crate::ui::modal::centered_rect;
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveFormField {
     #[default]
@@ -125,67 +127,42 @@ impl TaskFormState {
 
 pub struct TaskForm;
 
-impl StatefulWidget for TaskForm {
-    type State = TaskFormState;
-
-    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        if !state.is_modal_open {
-            return;
-        }
-
-        self.render_background(area, buf);
-
-        let modal_area = centered_rect(70, 50, area);
-        Clear.render(modal_area, buf);
-
-        let title = match state.mode {
-            FormMode::Create => "Add New Task",
-            FormMode::Edit(_) => "Edit Task",
-        };
-
-        let modal_block = Block::bordered()
-            .border_type(BorderType::Thick)
-            .title(title)
-            .style(Style::default());
-
-        let content_area = modal_block.inner(modal_area);
-        modal_block.render(modal_area, buf);
-
-        let main_layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(10), Constraint::Length(3)])
-            .split(content_area);
-
-        let field_layout = Layout::default()
-            .direction(Direction::Vertical)
-            .margin(1)
-            .constraints([
-                Constraint::Length(3),
-                Constraint::Min(5),
-                Constraint::Length(3),
-                Constraint::Length(1),
-            ])
-            .split(main_layout[0]);
-
-        self.render_title_field(buf, field_layout[0], state);
-        self.render_description_field(buf, field_layout[1], state);
-        self.render_status_field(buf, field_layout[2], state);
-
-        if let Some(error) = &state.error_message {
-            Paragraph::new(error.as_str())
-                .style(Style::default().fg(Color::Red))
-                .render(field_layout[3], buf);
-        }
-
-        let footer_text = "Tab: Next Field | Shift+Tab: Prev Field | Enter: Save | Esc: Cancel | Space: Cycle Status";
-        Paragraph::new(footer_text)
-            .style(Style::default().fg(Color::DarkGray))
-            .centered()
-            .render(main_layout[1], buf);
-    }
-}
-
 impl TaskForm {
+    pub fn create_task(state: &TaskFormState) -> Result<crate::task::Task, String> {
+        state.validate()?;
+
+        let now = chrono::Utc::now();
+        Ok(crate::task::Task {
+            id: now.timestamp() as usize,
+            title: state.title_input.value().trim().to_string(),
+            description: if state.description_input.value().trim().is_empty() {
+                None
+            } else {
+                Some(state.description_input.value().trim().to_string())
+            },
+            status: state.get_task_status(),
+            created_at: now,
+            updated_at: now,
+        })
+    }
+
+    pub fn update_task(state: &TaskFormState, task_id: usize) -> Result<crate::task::Task, String> {
+        state.validate()?;
+
+        Ok(crate::task::Task {
+            id: task_id,
+            title: state.title_input.value().trim().to_string(),
+            description: if state.description_input.value().trim().is_empty() {
+                None
+            } else {
+                Some(state.description_input.value().trim().to_string())
+            },
+            status: state.get_task_status(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        })
+    }
+
     fn render_background(&self, area: Rect, buf: &mut Buffer) {
         Block::default()
             .style(Style::default().add_modifier(Modifier::DIM))
@@ -290,59 +267,64 @@ impl TaskForm {
     }
 }
 
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
+impl StatefulWidget for TaskForm {
+    type State = TaskFormState;
 
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+        if !state.is_modal_open {
+            return;
+        }
+
+        self.render_background(area, buf);
+
+        let modal_area = centered_rect(70, 50, area);
+        Clear.render(modal_area, buf);
+
+        let title = match state.mode {
+            FormMode::Create => "Add New Task",
+            FormMode::Edit(_) => "Edit Task",
+        };
+
+        let modal_block = Block::bordered()
+            .border_type(BorderType::Thick)
+            .title(title)
+            .style(Style::default());
+
+        let content_area = modal_block.inner(modal_area);
+        modal_block.render(modal_area, buf);
+
+        let main_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(10), Constraint::Length(3)])
+            .split(content_area);
+
+        let field_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(5),
+                Constraint::Length(3),
+                Constraint::Length(1),
+            ])
+            .split(main_layout[0]);
+
+        self.render_title_field(buf, field_layout[0], state);
+        self.render_description_field(buf, field_layout[1], state);
+        self.render_status_field(buf, field_layout[2], state);
+
+        if let Some(error) = &state.error_message {
+            Paragraph::new(error.as_str())
+                .style(Style::default().fg(Color::Red))
+                .render(field_layout[3], buf);
+        }
+
+        let footer_text = "Tab: Next Field | Shift+Tab: Prev Field | Enter: Save | Esc: Cancel | Space: Cycle Status";
+        Paragraph::new(footer_text)
+            .style(Style::default().fg(Color::DarkGray))
+            .centered()
+            .render(main_layout[1], buf);
+    }
 }
 
-impl TaskForm {
-    pub fn create_task(state: &TaskFormState) -> Result<crate::task::Task, String> {
-        state.validate()?;
-
-        let now = chrono::Utc::now();
-        Ok(crate::task::Task {
-            id: now.timestamp() as usize,
-            title: state.title_input.value().trim().to_string(),
-            description: if state.description_input.value().trim().is_empty() {
-                None
-            } else {
-                Some(state.description_input.value().trim().to_string())
-            },
-            status: state.get_task_status(),
-            created_at: now,
-            updated_at: now,
-        })
-    }
-
-    pub fn update_task(state: &TaskFormState, task_id: usize) -> Result<crate::task::Task, String> {
-        state.validate()?;
-
-        Ok(crate::task::Task {
-            id: task_id,
-            title: state.title_input.value().trim().to_string(),
-            description: if state.description_input.value().trim().is_empty() {
-                None
-            } else {
-                Some(state.description_input.value().trim().to_string())
-            },
-            status: state.get_task_status(),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        })
-    }
-}
+impl TaskForm {}
