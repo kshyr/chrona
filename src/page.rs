@@ -1,28 +1,32 @@
-use crate::task::Task;
 use ratatui::{
     Frame,
+    buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent},
     layout::Rect,
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span, Text},
-    widgets::{Block, BorderType, Paragraph},
+    widgets::{Block, BorderType, Paragraph, StatefulWidget, Widget},
 };
 use strum_macros::{Display, EnumIter};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumIter)]
+use crate::pages::{
+    DashboardPage, FocusPage, PlanningPage, StatsPage, dashboard::DashboardPageState,
+    focus::FocusPageState, planning::PlanningPageState, stats::StatsPageState,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumIter, Default)]
 pub enum PageType {
+    #[default]
     Dashboard,
     Planning,
     Focus,
     Stats,
 }
 
-pub trait Page {
-    fn render(&mut self, frame: &mut Frame, area: Rect, tasks: &[Task]);
-
+pub trait Page: StatefulWidget {
     fn render_not_implemented(
         &self,
-        frame: &mut Frame,
+        buf: &mut Buffer,
         area: Rect,
         title: &str,
         is_active: bool,
@@ -42,28 +46,19 @@ pub trait Page {
             block = block
                 .border_style(Style::default().add_modifier(Modifier::DIM))
                 .border_type(BorderType::Rounded)
-                .dim();
         }
 
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-
         let text = Text::from("Not implemented yet");
-        frame.render_widget(
-            Paragraph::new(text)
-                .style(Style::default().fg(Color::DarkGray))
-                .centered(),
-            inner,
-        );
+        Paragraph::new(text)
+            .block(block)
+            .style(Style::default().fg(Color::DarkGray))
+            .centered()
+            .render(area, buf);
     }
-
-    fn handle_key_event(&mut self, key: KeyEvent) -> Option<PageAction>;
-
-    fn select_widget(&mut self, index: usize);
-
-    fn on_activate(&mut self);
-
-    fn on_deactivate(&mut self);
+    fn handle_key_event(self, key: KeyEvent, state: &mut Self::State) -> Option<PageAction>;
+    fn select_widget(self, index: usize, state: &mut Self::State);
+    fn on_activate(self, state: &mut Self::State);
+    fn on_deactivate(self, state: &mut Self::State);
 }
 
 pub enum PageAction {
@@ -72,36 +67,37 @@ pub enum PageAction {
     None,
 }
 
+#[derive(Default)]
 pub struct PageManager {
-    active_page: PageType,
-    dashboard_page: Box<dyn Page>,
-    planning_page: Box<dyn Page>,
-    focus_page: Box<dyn Page>,
-    stats_page: Box<dyn Page>,
+    pub active_page: PageType,
+    pub dashboard_page: DashboardPage,
+    pub dashboard_page_state: DashboardPageState,
+    pub planning_page: PlanningPage,
+    pub planning_page_state: PlanningPageState,
+    pub focus_page: FocusPage,
+    pub focus_page_state: FocusPageState,
+    pub stats_page: StatsPage,
+    pub stats_page_state: StatsPageState,
 }
 
 impl PageManager {
-    pub fn new(
-        dashboard_page: Box<dyn Page>,
-        planning_page: Box<dyn Page>,
-        focus_page: Box<dyn Page>,
-        stats_page: Box<dyn Page>,
-    ) -> Self {
-        Self {
-            active_page: PageType::Dashboard,
-            dashboard_page,
-            planning_page,
-            focus_page,
-            stats_page,
-        }
-    }
-
-    pub fn render(&mut self, frame: &mut Frame, area: Rect, tasks: &[Task]) {
+    pub fn render(&mut self, frame: &mut Frame, area: Rect) {
+        let buf = frame.buffer_mut();
         match self.active_page {
-            PageType::Dashboard => self.dashboard_page.render(frame, area, tasks),
-            PageType::Planning => self.planning_page.render(frame, area, tasks),
-            PageType::Focus => self.focus_page.render(frame, area, tasks),
-            PageType::Stats => self.stats_page.render(frame, area, tasks),
+            PageType::Dashboard => {
+                self.dashboard_page
+                    .render(area, buf, &mut self.dashboard_page_state)
+            }
+            PageType::Planning => {
+                self.planning_page
+                    .render(area, buf, &mut self.planning_page_state)
+            }
+            PageType::Focus => self
+                .focus_page
+                .render(area, buf, &mut self.focus_page_state),
+            PageType::Stats => self
+                .stats_page
+                .render(area, buf, &mut self.stats_page_state),
         }
     }
 
@@ -119,10 +115,18 @@ impl PageManager {
         };
 
         let page_action = match self.active_page {
-            PageType::Dashboard => self.dashboard_page.handle_key_event(key),
-            PageType::Planning => self.planning_page.handle_key_event(key),
-            PageType::Focus => self.focus_page.handle_key_event(key),
-            PageType::Stats => self.stats_page.handle_key_event(key),
+            PageType::Dashboard => self
+                .dashboard_page
+                .handle_key_event(key, &mut self.dashboard_page_state),
+            PageType::Planning => self
+                .planning_page
+                .handle_key_event(key, &mut self.planning_page_state),
+            PageType::Focus => self
+                .focus_page
+                .handle_key_event(key, &mut self.focus_page_state),
+            PageType::Stats => self
+                .stats_page
+                .handle_key_event(key, &mut self.stats_page_state),
         };
 
         let action = global_action.or(page_action);
@@ -145,10 +149,18 @@ impl PageManager {
 
     pub fn select_widget(&mut self, index: usize) {
         match self.active_page {
-            PageType::Dashboard => self.dashboard_page.select_widget(index),
-            PageType::Planning => self.planning_page.select_widget(index),
-            PageType::Focus => self.focus_page.select_widget(index),
-            PageType::Stats => self.stats_page.select_widget(index),
+            PageType::Dashboard => self
+                .dashboard_page
+                .select_widget(index, &mut self.dashboard_page_state),
+            PageType::Planning => self
+                .planning_page
+                .select_widget(index, &mut self.planning_page_state),
+            PageType::Focus => self
+                .focus_page
+                .select_widget(index, &mut self.focus_page_state),
+            PageType::Stats => self
+                .stats_page
+                .select_widget(index, &mut self.stats_page_state),
         }
     }
 
@@ -162,19 +174,27 @@ impl PageManager {
         }
 
         match self.active_page {
-            PageType::Dashboard => self.dashboard_page.on_deactivate(),
-            PageType::Planning => self.planning_page.on_deactivate(),
-            PageType::Focus => self.focus_page.on_deactivate(),
-            PageType::Stats => self.stats_page.on_deactivate(),
+            PageType::Dashboard => self
+                .dashboard_page
+                .on_deactivate(&mut self.dashboard_page_state),
+            PageType::Planning => self
+                .planning_page
+                .on_deactivate(&mut self.planning_page_state),
+            PageType::Focus => self.focus_page.on_deactivate(&mut self.focus_page_state),
+            PageType::Stats => self.stats_page.on_deactivate(&mut self.stats_page_state),
         }
 
         self.active_page = page_type;
 
         match self.active_page {
-            PageType::Dashboard => self.dashboard_page.on_activate(),
-            PageType::Planning => self.planning_page.on_activate(),
-            PageType::Focus => self.focus_page.on_activate(),
-            PageType::Stats => self.stats_page.on_activate(),
+            PageType::Dashboard => self
+                .dashboard_page
+                .on_activate(&mut self.dashboard_page_state),
+            PageType::Planning => self
+                .planning_page
+                .on_activate(&mut self.planning_page_state),
+            PageType::Focus => self.focus_page.on_activate(&mut self.focus_page_state),
+            PageType::Stats => self.stats_page.on_activate(&mut self.stats_page_state),
         }
     }
 }

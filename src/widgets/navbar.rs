@@ -1,9 +1,9 @@
 use ratatui::{
     buffer::Buffer,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Layout, Rect},
     style::{Color, Style, Stylize},
-    text::{Line, Span, ToSpan},
-    widgets::{Block, BorderType, Borders, Paragraph, Tabs, Widget},
+    text::{Line, ToSpan},
+    widgets::{Block, BorderType, Borders, Widget},
 };
 use strum::IntoEnumIterator;
 

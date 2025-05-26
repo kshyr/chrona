@@ -1,8 +1,9 @@
 use crate::page::{Page, PageAction};
 use crate::task::Task;
-use crate::task_list::{TaskList, TaskListState};
+use crate::widgets::task_list::{TaskList, TaskListState};
+use ratatui::buffer::Buffer;
+use ratatui::widgets::{StatefulWidget, Widget};
 use ratatui::{
-    Frame,
     crossterm::event::{KeyCode, KeyEvent},
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -10,33 +11,32 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 
-pub struct PlanningPage {
+#[derive(Default)]
+pub struct PlanningPageState {
+    tasks: Vec<Task>,
     task_list_state: TaskListState,
     active_widget: PlanningWidget,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Clone, Copy)]
+pub struct PlanningPage;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum PlanningWidget {
+    #[default]
     TaskList,
     TaskDetail,
 }
 
 impl PlanningPage {
-    pub fn new() -> Self {
-        Self {
-            task_list_state: TaskListState::new(true),
-            active_widget: PlanningWidget::TaskList,
-        }
-    }
-
-    fn render_task_detail(&self, frame: &mut Frame, area: Rect, tasks: &[Task]) {
+    fn render_task_detail(&self, area: Rect, buf: &mut Buffer, state: &mut PlanningPageState) {
         let block = Block::default().title("Task Details").borders(Borders::ALL);
 
         let inner = block.inner(area);
-        frame.render_widget(block, area);
+        block.render(inner, buf);
 
-        if let Some(selected_idx) = self.task_list_state.list_state.selected() {
-            if let Some(task) = tasks.get(selected_idx) {
+        if let Some(selected_idx) = state.task_list_state.list_state.selected() {
+            if let Some(task) = state.tasks.get(selected_idx) {
                 let status_style = match task.status {
                     crate::task::TaskStatus::Backlog => Style::default().fg(Color::Gray),
                     crate::task::TaskStatus::Todo => Style::default().fg(Color::Blue),
@@ -85,21 +85,21 @@ impl PlanningPage {
                     )));
                 }
 
-                frame.render_widget(Paragraph::new(Text::from(text)), inner);
+                Paragraph::new(Text::from(text)).render(inner, buf);
             }
         } else {
-            frame.render_widget(
-                Paragraph::new("No task selected")
-                    .style(Style::default().fg(Color::DarkGray))
-                    .centered(),
-                inner,
-            );
+            Paragraph::new("No task selected")
+                .style(Style::default().fg(Color::DarkGray))
+                .centered()
+                .render(inner, buf);
         }
     }
 }
 
-impl Page for PlanningPage {
-    fn render(&mut self, frame: &mut Frame, area: Rect, tasks: &[Task]) {
+impl StatefulWidget for PlanningPage {
+    type State = PlanningPageState;
+
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(1), Constraint::Length(1)])
@@ -112,33 +112,30 @@ impl Page for PlanningPage {
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(main_area);
 
-        self.task_list_state.is_active = self.active_widget == PlanningWidget::TaskList;
-        frame.render_stateful_widget(
-            TaskList::new(tasks),
-            main_chunks[0],
-            &mut self.task_list_state,
-        );
-
-        self.render_task_detail(frame, main_chunks[1], tasks);
+        state.task_list_state.is_active = state.active_widget == PlanningWidget::TaskList;
+        TaskList::default().render(main_chunks[0], buf, &mut state.task_list_state);
+        self.render_task_detail(main_chunks[1], buf, state);
     }
+}
 
-    fn handle_key_event(&mut self, key: KeyEvent) -> Option<PageAction> {
+impl Page for PlanningPage {
+    fn handle_key_event(self, key: KeyEvent, state: &mut Self::State) -> Option<PageAction> {
         match (key.modifiers, key.code) {
             (_, KeyCode::Char('j')) | (_, KeyCode::Down)
-                if self.active_widget == PlanningWidget::TaskList =>
+                if state.active_widget == PlanningWidget::TaskList =>
             {
-                self.task_list_state.list_state.select_next();
+                state.task_list_state.list_state.select_next();
                 Some(PageAction::None)
             }
             (_, KeyCode::Char('k')) | (_, KeyCode::Up)
-                if self.active_widget == PlanningWidget::TaskList =>
+                if state.active_widget == PlanningWidget::TaskList =>
             {
-                self.task_list_state.list_state.select_previous();
+                state.task_list_state.list_state.select_previous();
                 Some(PageAction::None)
             }
 
             (_, KeyCode::Tab) => {
-                self.active_widget = match self.active_widget {
+                state.active_widget = match state.active_widget {
                     PlanningWidget::TaskList => PlanningWidget::TaskDetail,
                     PlanningWidget::TaskDetail => PlanningWidget::TaskList,
                 };
@@ -155,20 +152,20 @@ impl Page for PlanningPage {
         }
     }
 
-    fn on_activate(&mut self) {
-        self.task_list_state.is_active = true;
-        self.active_widget = PlanningWidget::TaskList;
+    fn on_activate(self, state: &mut Self::State) {
+        state.task_list_state.is_active = true;
+        state.active_widget = PlanningWidget::TaskList;
     }
 
-    fn on_deactivate(&mut self) {
-        self.task_list_state.is_active = false;
+    fn on_deactivate(self, state: &mut Self::State) {
+        state.task_list_state.is_active = false;
     }
 
-    fn select_widget(&mut self, index: usize) {
-        self.active_widget = match index {
+    fn select_widget(self, index: usize, state: &mut Self::State) {
+        state.active_widget = match index {
             0 => PlanningWidget::TaskList,
             1 => PlanningWidget::TaskDetail,
-            _ => self.active_widget,
+            _ => state.active_widget,
         };
     }
 }

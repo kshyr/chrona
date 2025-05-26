@@ -8,23 +8,16 @@ use ratatui::{
 
 use crate::task::{Task, TaskId};
 
+#[derive(Default)]
 pub struct TaskListState {
     pub is_active: bool,
+    pub tasks: Vec<Task>,
     pub picked_tasks: Vec<usize>,
     pub list_state: ListState,
     pub last_selected: Option<usize>,
 }
 
 impl TaskListState {
-    pub fn new(is_active: bool) -> Self {
-        Self {
-            picked_tasks: Vec::new(),
-            list_state: ListState::default().with_selected(Some(0)),
-            is_active,
-            last_selected: None,
-        }
-    }
-
     pub fn toggle_pick_task(&mut self, task_id: TaskId) {
         let is_picked = self.picked_tasks.contains(&task_id);
         if is_picked {
@@ -35,17 +28,10 @@ impl TaskListState {
     }
 }
 
-pub struct TaskList<'a> {
-    tasks: &'a [Task],
-}
+#[derive(Default)]
+pub struct TaskList;
 
-impl<'a> TaskList<'a> {
-    pub fn new(tasks: &'a [Task]) -> Self {
-        Self { tasks }
-    }
-}
-
-impl<'a> StatefulWidget for TaskList<'a> {
+impl StatefulWidget for TaskList {
     type State = TaskListState;
 
     fn render(
@@ -58,7 +44,7 @@ impl<'a> StatefulWidget for TaskList<'a> {
             Line::from(vec![
                 Span::raw("Tasks ("),
                 Span::styled(
-                    format!("{}", self.tasks.len()),
+                    format!("{}", state.tasks.len()),
                     Style::default().fg(Color::Yellow),
                 ),
                 Span::raw(")"),
@@ -72,7 +58,7 @@ impl<'a> StatefulWidget for TaskList<'a> {
         } else {
             Line::from(vec![
                 Span::raw("Tasks ("),
-                Span::raw(format!("{}", self.tasks.len())),
+                Span::raw(format!("{}", state.tasks.len())),
                 Span::raw(")"),
             ])
         };
@@ -90,7 +76,7 @@ impl<'a> StatefulWidget for TaskList<'a> {
             block = block.border_style(Style::default().add_modifier(Modifier::DIM));
         }
 
-        let items: Vec<ListItem> = self
+        let items: Vec<ListItem> = state
             .tasks
             .iter()
             .enumerate()

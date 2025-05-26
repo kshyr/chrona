@@ -16,12 +16,14 @@ pub enum ActiveFormField {
     Status,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum FormMode {
+    #[default]
     Create,
     Edit(usize),
 }
 
+#[derive(Default)]
 pub struct TaskFormState {
     pub is_modal_open: bool,
     pub title_input: TextInput,

@@ -10,7 +10,6 @@ use std::io::Stdout;
 use tui_input::{Input, backend::crossterm::to_input_request};
 
 use crate::page::{PageAction, PageManager};
-use crate::pages::{DashboardPage, FocusPage, PlanningPage, StatsPage};
 use crate::store::Store;
 use crate::task::Task;
 use crate::task_form::{ActiveFormField, FormMode, TaskForm, TaskFormState};
@@ -46,13 +45,7 @@ impl App {
 
         let task_form = TaskFormState::new();
         let help_state = HelpState::new();
-
-        let page_manager = PageManager::new(
-            Box::new(DashboardPage::new()),
-            Box::new(PlanningPage::new()),
-            Box::new(FocusPage::new()),
-            Box::new(StatsPage::new()),
-        );
+        let page_manager = PageManager::default();
 
         Self {
             running: true,
@@ -82,7 +75,7 @@ impl App {
             Layout::vertical([Constraint::Min(3), Constraint::Percentage(100)]).areas(frame.area());
 
         frame.render_widget(Clear, main_area);
-        self.page_manager.render(frame, main_area, &self.tasks);
+        self.page_manager.render(frame, main_area);
 
         if self.task_form.is_modal_open {
             frame.render_stateful_widget(TaskForm, frame.area(), &mut self.task_form);
