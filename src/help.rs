@@ -19,10 +19,6 @@ impl Default for HelpState {
 }
 
 impl HelpState {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     pub fn toggle(&mut self) {
         self.visible = !self.visible;
     }

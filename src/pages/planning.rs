@@ -1,5 +1,5 @@
-use crate::page::{Page, PageAction};
-use crate::task::Task;
+use crate::app::GlobalState;
+use crate::page::{Page, PageAction, PageWidget};
 use crate::widgets::task_list::{TaskList, TaskListState};
 use ratatui::buffer::Buffer;
 use ratatui::widgets::{StatefulWidget, Widget};
@@ -10,12 +10,23 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
 };
+use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
 pub struct PlanningPageState {
-    tasks: Vec<Task>,
+    global_state: Arc<Mutex<GlobalState>>,
     task_list_state: TaskListState,
     active_widget: PlanningWidget,
+}
+
+impl PlanningPageState {
+    pub fn new(global_state: Arc<Mutex<GlobalState>>) -> Self {
+        Self {
+            global_state: global_state.clone(),
+            task_list_state: TaskListState::new(global_state.clone()),
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Default, Clone, Copy)]
@@ -31,12 +42,8 @@ enum PlanningWidget {
 impl PlanningPage {
     fn render_task_detail(&self, area: Rect, buf: &mut Buffer, state: &mut PlanningPageState) {
         let block = Block::default().title("Task Details").borders(Borders::ALL);
-
-        let inner = block.inner(area);
-        block.render(inner, buf);
-
         if let Some(selected_idx) = state.task_list_state.list_state.selected() {
-            if let Some(task) = state.tasks.get(selected_idx) {
+            if let Some(task) = state.global_state.lock().unwrap().tasks.get(selected_idx) {
                 let status_style = match task.status {
                     crate::task::TaskStatus::Backlog => Style::default().fg(Color::Gray),
                     crate::task::TaskStatus::Todo => Style::default().fg(Color::Blue),
@@ -85,13 +92,16 @@ impl PlanningPage {
                     )));
                 }
 
-                Paragraph::new(Text::from(text)).render(inner, buf);
+                Paragraph::new(Text::from(text))
+                    .block(block)
+                    .render(area, buf);
             }
         } else {
             Paragraph::new("No task selected")
+                .block(block)
                 .style(Style::default().fg(Color::DarkGray))
                 .centered()
-                .render(inner, buf);
+                .render(area, buf);
         }
     }
 }
@@ -120,20 +130,8 @@ impl StatefulWidget for PlanningPage {
 
 impl Page for PlanningPage {
     fn handle_key_event(self, key: KeyEvent, state: &mut Self::State) -> Option<PageAction> {
+        TaskList::handle_key_event(key, &mut state.task_list_state);
         match (key.modifiers, key.code) {
-            (_, KeyCode::Char('j')) | (_, KeyCode::Down)
-                if state.active_widget == PlanningWidget::TaskList =>
-            {
-                state.task_list_state.list_state.select_next();
-                Some(PageAction::None)
-            }
-            (_, KeyCode::Char('k')) | (_, KeyCode::Up)
-                if state.active_widget == PlanningWidget::TaskList =>
-            {
-                state.task_list_state.list_state.select_previous();
-                Some(PageAction::None)
-            }
-
             (_, KeyCode::Tab) => {
                 state.active_widget = match state.active_widget {
                     PlanningWidget::TaskList => PlanningWidget::TaskDetail,
@@ -141,13 +139,6 @@ impl Page for PlanningPage {
                 };
                 Some(PageAction::None)
             }
-
-            (_, KeyCode::Char('a')) => None,
-
-            (_, KeyCode::Char('e')) => None,
-
-            (_, KeyCode::Char('d')) => None,
-
             _ => None,
         }
     }

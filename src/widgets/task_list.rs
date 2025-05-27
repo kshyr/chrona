@@ -1,4 +1,9 @@
+use std::sync::{Arc, Mutex};
+
 use ratatui::{
+    buffer::Buffer,
+    crossterm::event::{KeyCode, KeyEvent},
+    layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
@@ -6,18 +11,24 @@ use ratatui::{
     },
 };
 
-use crate::task::{Task, TaskId};
+use crate::{app::GlobalState, page::PageWidget, task::TaskId};
 
 #[derive(Default)]
 pub struct TaskListState {
+    pub global_state: Arc<Mutex<GlobalState>>,
     pub is_active: bool,
-    pub tasks: Vec<Task>,
     pub picked_tasks: Vec<usize>,
     pub list_state: ListState,
     pub last_selected: Option<usize>,
 }
 
 impl TaskListState {
+    pub fn new(global_state: Arc<Mutex<GlobalState>>) -> Self {
+        Self {
+            global_state,
+            ..Default::default()
+        }
+    }
     pub fn toggle_pick_task(&mut self, task_id: TaskId) {
         let is_picked = self.picked_tasks.contains(&task_id);
         if is_picked {
@@ -44,7 +55,7 @@ impl StatefulWidget for TaskList {
             Line::from(vec![
                 Span::raw("Tasks ("),
                 Span::styled(
-                    format!("{}", state.tasks.len()),
+                    format!("{}", state.global_state.lock().unwrap().tasks.len()),
                     Style::default().fg(Color::Yellow),
                 ),
                 Span::raw(")"),
@@ -58,7 +69,10 @@ impl StatefulWidget for TaskList {
         } else {
             Line::from(vec![
                 Span::raw("Tasks ("),
-                Span::raw(format!("{}", state.tasks.len())),
+                Span::raw(format!(
+                    "{}",
+                    state.global_state.lock().unwrap().tasks.len()
+                )),
                 Span::raw(")"),
             ])
         };
@@ -77,6 +91,9 @@ impl StatefulWidget for TaskList {
         }
 
         let items: Vec<ListItem> = state
+            .global_state
+            .lock()
+            .unwrap()
             .tasks
             .iter()
             .enumerate()
@@ -129,5 +146,23 @@ impl StatefulWidget for TaskList {
             );
 
         list.render(area, buf, &mut state.list_state);
+    }
+}
+
+impl PageWidget for TaskList {
+    fn handle_key_event(key: KeyEvent, state: &mut Self::State) {
+        match (key.modifiers, key.code) {
+            (_, KeyCode::Char('j')) | (_, KeyCode::Down) => state.list_state.select_next(),
+            (_, KeyCode::Char('k')) | (_, KeyCode::Up) => state.list_state.select_previous(),
+            (_, KeyCode::Char('a')) => {
+                state.global_state.lock().unwrap().task_form.is_modal_open = true
+            }
+            _ => {}
+        }
+    }
+
+    fn render_help(&self, area: Rect, buf: &mut Buffer) {
+        let help_text = "j/k: navigate, q: quit";
+        buf.set_string(area.x, area.y, help_text, Style::default());
     }
 }

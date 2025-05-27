@@ -1,3 +1,6 @@
+use std::sync::{Arc, Mutex};
+
+use crate::app::GlobalState;
 use crate::page::{Page, PageAction};
 use ratatui::widgets::StatefulWidget;
 use ratatui::{
@@ -7,7 +10,17 @@ use ratatui::{
 
 #[derive(Default)]
 pub struct StatsPageState {
+    global_state: Arc<Mutex<GlobalState>>,
     active_widget: StatsWidget,
+}
+
+impl StatsPageState {
+    pub fn new(global_state: Arc<Mutex<GlobalState>>) -> Self {
+        Self {
+            global_state,
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Default, Clone, Copy)]
@@ -92,9 +105,7 @@ impl Page for StatsPage {
         }
     }
 
-    fn on_activate(self, state: &mut Self::State) {
-        state.active_widget = StatsWidget::TimeSummary;
-    }
+    fn on_activate(self, state: &mut Self::State) {}
 
     fn on_deactivate(self, state: &mut Self::State) {}
 

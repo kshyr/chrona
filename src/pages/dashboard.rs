@@ -1,4 +1,7 @@
-use crate::page::{Page, PageAction};
+use std::sync::{Arc, Mutex};
+
+use crate::app::GlobalState;
+use crate::page::{Page, PageAction, PageWidget};
 use crate::widgets::task_list::{TaskList, TaskListState};
 use ratatui::buffer::Buffer;
 use ratatui::widgets::StatefulWidget;
@@ -9,8 +12,19 @@ use ratatui::{
 
 #[derive(Default)]
 pub struct DashboardPageState {
+    global_state: Arc<Mutex<GlobalState>>,
     pub task_list_state: TaskListState,
     pub active_widget: DashboardWidget,
+}
+
+impl DashboardPageState {
+    pub fn new(global_state: Arc<Mutex<GlobalState>>) -> Self {
+        Self {
+            global_state: global_state.clone(),
+            task_list_state: TaskListState::new(global_state),
+            active_widget: DashboardWidget::TaskList,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -67,20 +81,8 @@ impl StatefulWidget for DashboardPage {
 
 impl Page for DashboardPage {
     fn handle_key_event(self, key: KeyEvent, state: &mut Self::State) -> Option<PageAction> {
+        TaskList::handle_key_event(key, &mut state.task_list_state);
         match (key.modifiers, key.code) {
-            (_, KeyCode::Char('j')) | (_, KeyCode::Down)
-                if state.active_widget == DashboardWidget::TaskList =>
-            {
-                state.task_list_state.list_state.select_next();
-                Some(PageAction::None)
-            }
-            (_, KeyCode::Char('k')) | (_, KeyCode::Up)
-                if state.active_widget == DashboardWidget::TaskList =>
-            {
-                state.task_list_state.list_state.select_previous();
-                Some(PageAction::None)
-            }
-
             (modifiers, KeyCode::Tab) => {
                 if modifiers.contains(KeyModifiers::SHIFT) {
                     state.active_widget = match state.active_widget {

@@ -1,12 +1,18 @@
+use std::sync::{Arc, Mutex};
+
 use ratatui::{
     buffer::Buffer,
+    crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers},
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     widgets::{Block, BorderType, Borders, Clear, Paragraph, StatefulWidget, Widget},
 };
-use tui_input::Input as TextInput;
+use tui_input::{
+    Input as TextInput, InputRequest,
+    backend::crossterm::{EventHandler, to_input_request},
+};
 
-use crate::ui::modal::centered_rect;
+use crate::{app::GlobalState, page::PageWidget, store::Store, ui::modal::centered_rect};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveFormField {
@@ -37,30 +43,12 @@ pub struct TaskFormState {
 }
 
 impl TaskFormState {
-    pub fn new() -> Self {
-        let title_input = TextInput::default();
-        let description_input = TextInput::default();
-        let status_input = TextInput::default();
-        let status_options = vec!["Backlog", "Todo", "InProgress", "Done"];
-
-        Self {
-            is_modal_open: false,
-            title_input,
-            description_input,
-            status_input,
-            active_field: ActiveFormField::Title,
-            mode: FormMode::Create,
-            error_message: None,
-            status_options,
-            status_selection: 0,
-        }
-    }
-
     pub fn reset(&mut self) {
         self.title_input.reset();
         self.description_input.reset();
         self.status_selection = 0;
         self.active_field = ActiveFormField::Title;
+        self.status_options = vec!["Backlog", "Todo", "In Progress", "Done"];
         self.error_message = None;
         self.mode = FormMode::Create;
     }
@@ -94,6 +82,64 @@ impl TaskFormState {
             return Err("Title cannot be empty".to_string());
         }
         Ok(())
+    }
+
+    fn submit_form(&mut self, global_state: Arc<Mutex<GlobalState>>) {
+        match &global_state.lock().unwrap().task_form.mode {
+            FormMode::Create => {
+                match TaskForm::create_task(&global_state.lock().unwrap().task_form) {
+                    Ok(task) => {
+                        global_state.lock().unwrap().tasks.push(task.clone());
+                        global_state
+                            .lock()
+                            .unwrap()
+                            .store
+                            .append_task(task)
+                            .unwrap_or_else(|e| {
+                                eprintln!("Failed to save tasks: {}", e);
+                            });
+                        global_state.lock().unwrap().task_form.is_modal_open = false;
+
+                        global_state.lock().unwrap().status_message =
+                            Some(("Task created successfully".to_string(), Color::Green));
+                    }
+                    Err(err) => {
+                        global_state.lock().unwrap().task_form.error_message = Some(err);
+                    }
+                }
+            }
+            FormMode::Edit(task_id) => {
+                match TaskForm::update_task(&global_state.lock().unwrap().task_form, *task_id) {
+                    Ok(updated_task) => {
+                        if let Some(task) = global_state
+                            .lock()
+                            .unwrap()
+                            .tasks
+                            .iter_mut()
+                            .find(|t| t.id == *task_id)
+                        {
+                            *task = updated_task.clone();
+                            global_state
+                                .lock()
+                                .unwrap()
+                                .store
+                                .update_task(*task_id, updated_task)
+                                .unwrap_or_else(|e| {
+                                    eprintln!("Failed to save tasks: {}", e);
+                                });
+                        }
+
+                        global_state.lock().unwrap().task_form.is_modal_open = false;
+
+                        global_state.lock().unwrap().status_message =
+                            Some(("Task updated successfully".to_string(), Color::Green));
+                    }
+                    Err(err) => {
+                        global_state.lock().unwrap().task_form.error_message = Some(err);
+                    }
+                }
+            }
+        }
     }
 
     pub fn get_task_status(&self) -> crate::task::TaskStatus {
@@ -329,4 +375,37 @@ impl StatefulWidget for TaskForm {
     }
 }
 
-impl TaskForm {}
+impl PageWidget for TaskForm {
+    fn handle_key_event(key: KeyEvent, state: &mut Self::State) {
+        match key.code {
+            KeyCode::Esc => {
+                state.is_modal_open = false;
+            }
+            KeyCode::Tab => {
+                if key.modifiers.contains(KeyModifiers::SHIFT) {
+                    state.prev_field();
+                } else {
+                    state.next_field();
+                }
+            }
+            KeyCode::Char(' ') if state.active_field == ActiveFormField::Status => {
+                state.cycle_status();
+            }
+            _ => {
+                if state.active_field != ActiveFormField::Status {
+                    let active_form_input: &mut TextInput = match state.active_field {
+                        ActiveFormField::Title => &mut state.title_input,
+                        ActiveFormField::Description => &mut state.description_input,
+                        _ => unreachable!(),
+                    };
+
+                    active_form_input.handle_event(&Event::Key(key));
+                }
+            }
+        }
+    }
+
+    fn render_help(&self, area: Rect, buf: &mut Buffer) {
+        todo!()
+    }
+}

@@ -1,17 +1,23 @@
+use std::sync::{Arc, Mutex};
+
 use ratatui::{
     Frame,
     buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent},
-    layout::Rect,
+    layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Paragraph, StatefulWidget, Widget},
 };
 use strum_macros::{Display, EnumIter};
 
-use crate::pages::{
-    DashboardPage, FocusPage, PlanningPage, StatsPage, dashboard::DashboardPageState,
-    focus::FocusPageState, planning::PlanningPageState, stats::StatsPageState,
+use crate::{
+    app::GlobalState,
+    pages::{
+        DashboardPage, FocusPage, PlanningPage, StatsPage, dashboard::DashboardPageState,
+        focus::FocusPageState, planning::PlanningPageState, stats::StatsPageState,
+    },
+    widgets::task_list::TaskList,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumIter, Default)]
@@ -61,6 +67,11 @@ pub trait Page: StatefulWidget {
     fn on_deactivate(self, state: &mut Self::State);
 }
 
+pub trait PageWidget: StatefulWidget {
+    fn handle_key_event(key: KeyEvent, state: &mut Self::State);
+    fn render_help(&self, area: Rect, buf: &mut Buffer);
+}
+
 pub enum PageAction {
     SelectWidget(usize),
     NavigateTo(PageType),
@@ -69,6 +80,8 @@ pub enum PageAction {
 
 #[derive(Default)]
 pub struct PageManager {
+    pub global_state: Arc<Mutex<GlobalState>>,
+    active_widget_index: usize,
     pub active_page: PageType,
     pub dashboard_page: DashboardPage,
     pub dashboard_page_state: DashboardPageState,
@@ -81,24 +94,70 @@ pub struct PageManager {
 }
 
 impl PageManager {
+    pub fn new(global_state: Arc<Mutex<GlobalState>>) -> Self {
+        Self {
+            global_state: global_state.clone(),
+            active_widget_index: 0,
+            dashboard_page_state: DashboardPageState::new(global_state.clone()),
+            planning_page_state: PlanningPageState::new(global_state.clone()),
+            focus_page_state: FocusPageState::new(global_state.clone()),
+            stats_page_state: StatsPageState::new(global_state.clone()),
+            ..Default::default()
+        }
+    }
+
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
         let buf = frame.buffer_mut();
+        let [main_area, help_area] =
+            Layout::vertical([Constraint::Percentage(100), Constraint::Min(1)])
+                .spacing(-1)
+                .areas(area);
+        self.render_help(help_area, buf);
+
         match self.active_page {
             PageType::Dashboard => {
                 self.dashboard_page
-                    .render(area, buf, &mut self.dashboard_page_state)
+                    .render(main_area, buf, &mut self.dashboard_page_state)
             }
             PageType::Planning => {
                 self.planning_page
-                    .render(area, buf, &mut self.planning_page_state)
+                    .render(main_area, buf, &mut self.planning_page_state)
             }
             PageType::Focus => self
                 .focus_page
-                .render(area, buf, &mut self.focus_page_state),
+                .render(main_area, buf, &mut self.focus_page_state),
             PageType::Stats => self
                 .stats_page
-                .render(area, buf, &mut self.stats_page_state),
+                .render(main_area, buf, &mut self.stats_page_state),
         }
+    }
+
+    fn unimplemented(&self, area: Rect, buf: &mut Buffer) {
+        buf.set_string(
+            area.x,
+            area.y,
+            "Unimplemented",
+            Style::default().fg(Color::Red),
+        );
+    }
+
+    fn render_help(&mut self, area: Rect, buf: &mut Buffer) {
+        match self.active_page {
+            PageType::Dashboard => match self.active_widget_index {
+                0 => TaskList::default().render_help(area, buf),
+                _ => self.unimplemented(area, buf),
+            },
+            PageType::Planning => match self.active_widget_index {
+                0 => TaskList::default().render_help(area, buf),
+                _ => self.unimplemented(area, buf),
+            },
+            PageType::Focus => match self.active_widget_index {
+                _ => self.unimplemented(area, buf),
+            },
+            PageType::Stats => match self.active_widget_index {
+                _ => self.unimplemented(area, buf),
+            },
+        };
     }
 
     pub fn handle_key_event(&mut self, key: KeyEvent) -> Option<PageAction> {
@@ -148,24 +207,25 @@ impl PageManager {
     }
 
     pub fn select_widget(&mut self, index: usize) {
+        self.active_widget_index = index;
         match self.active_page {
-            PageType::Dashboard => self
-                .dashboard_page
-                .select_widget(index, &mut self.dashboard_page_state),
-            PageType::Planning => self
-                .planning_page
-                .select_widget(index, &mut self.planning_page_state),
-            PageType::Focus => self
-                .focus_page
-                .select_widget(index, &mut self.focus_page_state),
-            PageType::Stats => self
-                .stats_page
-                .select_widget(index, &mut self.stats_page_state),
+            PageType::Dashboard => {
+                self.dashboard_page
+                    .select_widget(index, &mut self.dashboard_page_state);
+            }
+            PageType::Planning => {
+                self.planning_page
+                    .select_widget(index, &mut self.planning_page_state);
+            }
+            PageType::Focus => {
+                self.focus_page
+                    .select_widget(index, &mut self.focus_page_state);
+            }
+            PageType::Stats => {
+                self.stats_page
+                    .select_widget(index, &mut self.stats_page_state);
+            }
         }
-    }
-
-    pub fn active_page(&self) -> PageType {
-        self.active_page
     }
 
     pub fn change_page(&mut self, page_type: PageType) {
@@ -185,6 +245,7 @@ impl PageManager {
         }
 
         self.active_page = page_type;
+        self.active_widget_index = 0;
 
         match self.active_page {
             PageType::Dashboard => self

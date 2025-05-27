@@ -1,3 +1,6 @@
+use std::sync::{Arc, Mutex};
+
+use crate::app::GlobalState;
 use crate::page::{Page, PageAction};
 use crate::task::Task;
 use ratatui::buffer::Buffer;
@@ -12,9 +15,19 @@ use ratatui::{
 
 #[derive(Default)]
 pub struct FocusPageState {
+    global_state: Arc<Mutex<GlobalState>>,
     tasks: Vec<Task>,
     active_widget: FocusWidget,
     selected_task_idx: Option<usize>,
+}
+
+impl FocusPageState {
+    pub fn new(global_state: Arc<Mutex<GlobalState>>) -> Self {
+        Self {
+            global_state,
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Default, Clone, Copy)]

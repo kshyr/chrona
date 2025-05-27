@@ -4,7 +4,6 @@ mod page;
 mod pages;
 mod store;
 mod task;
-mod task_form;
 mod toml;
 mod ui;
 mod widgets;

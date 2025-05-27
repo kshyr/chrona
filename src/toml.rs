@@ -44,11 +44,10 @@ struct TomlStoreFile {
     tasks: Vec<Task>,
 }
 
-impl TomlStore {
-    pub fn new() -> color_eyre::Result<Self> {
-        let mut path = get_data_dir()?;
-
-        fs::create_dir_all(&path)?;
+impl Default for TomlStore {
+    fn default() -> Self {
+        let mut path = get_data_dir().expect("Failed to get data directory");
+        fs::create_dir_all(&path).expect("Failed to create directory");
         path.push("tasks.toml");
         let mut store = Self {
             file_path: path,
@@ -62,9 +61,11 @@ impl TomlStore {
                 Vec::new()
             }
         });
-        Ok(store)
+        store
     }
+}
 
+impl TomlStore {
     fn ensure_directory_exists(&self) -> color_eyre::Result<()> {
         if let Some(parent_dir) = self.file_path.parent() {
             fs::create_dir_all(parent_dir)?;
