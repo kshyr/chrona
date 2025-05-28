@@ -1,14 +1,15 @@
-use crate::app::GlobalState;
-use crate::page::{Page, PageAction, PageWidget};
-use crate::widgets::task_list::{TaskList, TaskListState};
-use ratatui::buffer::Buffer;
-use ratatui::widgets::{StatefulWidget, Widget};
+use crate::{
+    app::GlobalState,
+    page::{Page, PageAction, PageWidget},
+    widgets::task_list::{TaskList, TaskListState},
+};
 use ratatui::{
+    buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent},
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Paragraph, StatefulWidget, Widget},
 };
 use std::sync::{Arc, Mutex};
 

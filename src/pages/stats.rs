@@ -1,12 +1,13 @@
-use std::sync::{Arc, Mutex};
-
-use crate::app::GlobalState;
-use crate::page::{Page, PageAction};
-use ratatui::widgets::StatefulWidget;
+use crate::{
+    app::GlobalState,
+    page::{Page, PageAction},
+};
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     layout::{Constraint, Direction, Layout, Rect},
+    widgets::StatefulWidget,
 };
+use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
 pub struct StatsPageState {

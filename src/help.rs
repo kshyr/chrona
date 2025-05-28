@@ -1,3 +1,4 @@
+use crate::ui::modal::centered_rect;
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Layout, Rect},
@@ -5,8 +6,6 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Clear, Paragraph, StatefulWidget, Widget},
 };
-
-use crate::ui::modal::centered_rect;
 
 pub struct HelpState {
     pub visible: bool,

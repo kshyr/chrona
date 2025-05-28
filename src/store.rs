@@ -1,9 +1,7 @@
-use std::{fs, path::PathBuf};
-
+use crate::task::{Task, TaskId};
 use color_eyre::eyre;
 use directories::BaseDirs;
-
-use crate::task::{Task, TaskId};
+use std::{fs, path::PathBuf};
 
 pub trait Store {
     fn load_all_tasks(&mut self) -> color_eyre::Result<Vec<Task>>;

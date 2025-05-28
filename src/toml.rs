@@ -1,12 +1,10 @@
-use std::{fs, path::PathBuf};
-
-use color_eyre::eyre;
-use serde::{Deserialize, Serialize};
-
 use crate::{
     store::{Store, get_data_dir},
     task::{Task, TaskId},
 };
+use color_eyre::eyre;
+use serde::{Deserialize, Serialize};
+use std::{fs, path::PathBuf};
 
 const TOML_TASKS_EXAMPLE: &'static str = r#"
 [[tasks]]

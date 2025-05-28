@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex};
-
 use ratatui::{
     Frame,
     buffer::Buffer,
@@ -9,6 +7,7 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Paragraph, StatefulWidget, Widget},
 };
+use std::sync::{Arc, Mutex};
 use strum_macros::{Display, EnumIter};
 
 use crate::{

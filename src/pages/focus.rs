@@ -1,17 +1,17 @@
-use std::sync::{Arc, Mutex};
-
-use crate::app::GlobalState;
-use crate::page::{Page, PageAction};
-use crate::task::Task;
-use ratatui::buffer::Buffer;
-use ratatui::widgets::{StatefulWidget, Widget};
+use crate::{
+    app::GlobalState,
+    page::{Page, PageAction},
+    task::Task,
+};
 use ratatui::{
+    buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Paragraph, StatefulWidget, Widget},
 };
+use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
 pub struct FocusPageState {

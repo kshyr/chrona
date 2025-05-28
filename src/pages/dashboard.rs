@@ -1,14 +1,15 @@
-use std::sync::{Arc, Mutex};
-
-use crate::app::GlobalState;
-use crate::page::{Page, PageAction, PageWidget};
-use crate::widgets::task_list::{TaskList, TaskListState};
-use ratatui::buffer::Buffer;
-use ratatui::widgets::StatefulWidget;
+use crate::{
+    app::GlobalState,
+    page::{Page, PageAction, PageWidget},
+    widgets::task_list::{TaskList, TaskListState},
+};
 use ratatui::{
+    buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     layout::{Constraint, Direction, Layout, Rect},
+    widgets::StatefulWidget,
 };
+use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
 pub struct DashboardPageState {

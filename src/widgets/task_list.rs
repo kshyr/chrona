@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex};
-
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent},
@@ -10,6 +8,7 @@ use ratatui::{
         Block, BorderType, HighlightSpacing, List, ListItem, ListState, Padding, StatefulWidget,
     },
 };
+use std::sync::{Arc, Mutex};
 
 use crate::{app::GlobalState, page::PageWidget, task::TaskId};
 

@@ -13,17 +13,17 @@ use std::{
 };
 use tui_input::{Input, backend::crossterm::to_input_request};
 
-use crate::task::Task;
-use crate::toml::TomlStore;
 use crate::{
     help::{HelpScreen, HelpState},
-    widgets::navbar::Navbar,
-};
-use crate::{
     page::{PageAction, PageManager},
-    widgets::task_form::TaskFormState,
+    store::Store,
+    task::Task,
+    toml::TomlStore,
+    widgets::{
+        navbar::Navbar,
+        task_form::{TaskForm, TaskFormState},
+    },
 };
-use crate::{store::Store, widgets::task_form::TaskForm};
 
 #[derive(Default)]
 pub struct GlobalState {

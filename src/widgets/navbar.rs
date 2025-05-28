@@ -1,3 +1,4 @@
+use crate::{page::PageType, ui::center};
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
@@ -6,8 +7,6 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Widget},
 };
 use strum::IntoEnumIterator;
-
-use crate::{page::PageType, ui::center};
 
 pub struct Navbar {
     active_page: PageType,

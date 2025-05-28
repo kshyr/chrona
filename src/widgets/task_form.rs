@@ -1,5 +1,4 @@
-use std::sync::{Arc, Mutex};
-
+use crate::{app::GlobalState, page::PageWidget, store::Store, ui::modal::centered_rect};
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers},
@@ -7,12 +6,8 @@ use ratatui::{
     style::{Color, Modifier, Style},
     widgets::{Block, BorderType, Borders, Clear, Paragraph, StatefulWidget, Widget},
 };
-use tui_input::{
-    Input as TextInput, InputRequest,
-    backend::crossterm::{EventHandler, to_input_request},
-};
-
-use crate::{app::GlobalState, page::PageWidget, store::Store, ui::modal::centered_rect};
+use std::sync::{Arc, Mutex};
+use tui_input::{Input as TextInput, backend::crossterm::EventHandler};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveFormField {
