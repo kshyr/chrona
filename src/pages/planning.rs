@@ -131,7 +131,12 @@ impl StatefulWidget for PlanningPage {
 
 impl Page for PlanningPage {
     fn handle_key_event(self, key: KeyEvent, state: &mut Self::State) -> Option<PageAction> {
-        TaskList::handle_key_event(key, &mut state.task_list_state);
+        match state.active_widget {
+            PlanningWidget::TaskList => {
+                TaskList {}.handle_key_event(key, &mut state.task_list_state)
+            }
+            PlanningWidget::TaskDetail => todo!(),
+        }
         match (key.modifiers, key.code) {
             (_, KeyCode::Tab) => {
                 state.active_widget = match state.active_widget {

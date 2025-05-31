@@ -7,8 +7,12 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Paragraph, StatefulWidget, Widget},
 };
-use std::sync::{Arc, Mutex};
+use std::{
+    os, process,
+    sync::{Arc, Mutex},
+};
 use strum_macros::{Display, EnumIter};
+use tui_logger::{LevelFilter, TuiLoggerSmartWidget, TuiWidgetState};
 
 use crate::{
     app::GlobalState,
@@ -67,7 +71,7 @@ pub trait Page: StatefulWidget {
 }
 
 pub trait PageWidget: StatefulWidget {
-    fn handle_key_event(key: KeyEvent, state: &mut Self::State);
+    fn handle_key_event(&self, key: KeyEvent, state: &mut Self::State);
     fn render_help(&self, area: Rect, buf: &mut Buffer);
 }
 
@@ -157,6 +161,12 @@ impl PageManager {
                 _ => self.unimplemented(area, buf),
             },
         };
+        buf.set_string(
+            area.x + 2_u16.pow(5),
+            area.y,
+            process::id().to_string(),
+            Style::default(),
+        );
     }
 
     pub fn handle_key_event(&mut self, key: KeyEvent) -> Option<PageAction> {
@@ -172,6 +182,8 @@ impl PageManager {
             _ => None,
         };
 
+        //
+
         let page_action = match self.active_page {
             PageType::Dashboard => self
                 .dashboard_page
@@ -186,8 +198,11 @@ impl PageManager {
                 .stats_page
                 .handle_key_event(key, &mut self.stats_page_state),
         };
+        //
 
         let action = global_action.or(page_action);
+
+        //
 
         if let Some(action) = action {
             match action {
@@ -199,10 +214,14 @@ impl PageManager {
                 }
                 PageAction::None => {}
             }
-            return Some(PageAction::None);
+            return None;
         }
 
+        //
+
         action
+
+        //
     }
 
     pub fn select_widget(&mut self, index: usize) {

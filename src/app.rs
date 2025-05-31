@@ -7,15 +7,15 @@ use ratatui::{
     widgets::{Clear, Paragraph},
 };
 use std::{
+    fmt::Debug,
     io::Stdout,
-    rc::Rc,
     sync::{Arc, Mutex},
 };
-use tui_input::{Input, backend::crossterm::to_input_request};
+use tui_logger::TuiWidgetState;
 
 use crate::{
     help::{HelpScreen, HelpState},
-    page::{PageAction, PageManager},
+    page::{PageAction, PageManager, PageWidget},
     store::Store,
     task::Task,
     toml::TomlStore,
@@ -30,9 +30,22 @@ pub struct GlobalState {
     pub running: bool,
     pub task_form: TaskFormState,
     pub help_state: HelpState,
+    pub debug_state: TuiWidgetState,
     pub tasks: Vec<Task>,
     pub store: TomlStore,
     pub status_message: Option<(String, Color)>,
+}
+
+impl Debug for GlobalState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(
+            format!(
+                "task_form: {} {:?}. {:?}",
+                self.task_form.is_modal_open, self.task_form.mode, self.status_message
+            )
+            .as_str(),
+        )
+    }
 }
 
 pub struct App {
@@ -85,7 +98,13 @@ impl App {
         let gs = &mut self.global_state.lock().unwrap();
 
         if gs.task_form.is_modal_open {
-            frame.render_stateful_widget(TaskForm, frame.area(), &mut gs.task_form);
+            frame.render_stateful_widget(
+                TaskForm {
+                    global_state: self.global_state.clone(),
+                },
+                frame.area(),
+                &mut gs.task_form,
+            );
         }
         if gs.help_state.visible {
             frame.render_stateful_widget(HelpScreen, frame.area(), &mut gs.help_state);
@@ -108,6 +127,11 @@ impl App {
         match event {
             Event::Key(key) if key.kind == KeyEventKind::Press => {
                 if self.global_state.lock().unwrap().task_form.is_modal_open {
+                    //
+                    TaskForm {
+                        global_state: self.global_state.clone(),
+                    }
+                    .handle_key_event(key, &mut self.global_state.lock().unwrap().task_form);
                 } else if self.global_state.lock().unwrap().help_state.visible {
                     if key.code == KeyCode::Esc || key.code == KeyCode::Char('?') {
                         self.global_state.lock().unwrap().help_state.hide();
@@ -116,9 +140,9 @@ impl App {
                     if key.code == KeyCode::Char('q') {
                         self.quit();
                     }
-
+                    //
                     let action = self.page_manager.handle_key_event(key);
-
+                    //
                     if action.is_none() || matches!(action, Some(PageAction::None)) {
                         self.on_key_event(key);
                     }
@@ -137,34 +161,9 @@ impl App {
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc | KeyCode::Char('q'))
             | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => self.quit(),
-
-            (_, KeyCode::Char('a')) => {
-                self.global_state
-                    .lock()
-                    .unwrap()
-                    .task_form
-                    .open_for_create();
-            }
-            (_, KeyCode::Char('e')) => {
-                if let Some(task) = self.get_selected_task() {
-                    self.global_state
-                        .lock()
-                        .unwrap()
-                        .task_form
-                        .open_for_edit(&task);
-                } else {
-                    self.global_state.lock().unwrap().status_message =
-                        Some(("No task selected to edit".to_string(), Color::Red));
-                }
-            }
-            (_, KeyCode::Char('d')) => {
-                self.delete_selected_task();
-            }
-
             (_, KeyCode::Char('?')) => {
                 self.global_state.lock().unwrap().help_state.toggle();
             }
-
             _ => {}
         }
     }

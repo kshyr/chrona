@@ -9,6 +9,7 @@ use ratatui::{
     },
 };
 use std::sync::{Arc, Mutex};
+use tracing::debug;
 
 use crate::{app::GlobalState, page::PageWidget, task::TaskId};
 
@@ -149,12 +150,51 @@ impl StatefulWidget for TaskList {
 }
 
 impl PageWidget for TaskList {
-    fn handle_key_event(key: KeyEvent, state: &mut Self::State) {
+    fn handle_key_event(&self, key: KeyEvent, state: &mut Self::State) {
+        debug!(target: "task_list", state = ?state.global_state.lock().unwrap());
         match (key.modifiers, key.code) {
             (_, KeyCode::Char('j')) | (_, KeyCode::Down) => state.list_state.select_next(),
             (_, KeyCode::Char('k')) | (_, KeyCode::Up) => state.list_state.select_previous(),
             (_, KeyCode::Char('a')) => {
-                state.global_state.lock().unwrap().task_form.is_modal_open = true
+                state
+                    .global_state
+                    .lock()
+                    .unwrap()
+                    .task_form
+                    .open_for_create();
+            }
+            (_, KeyCode::Char('e')) => {
+                //
+                debug!(target: "task_list", "clicked e");
+                if let Some(task_id) = state.list_state.selected() {
+                    //
+                    debug!(target: "task_list", task_id = ?task_id, state = ?state.global_state.lock().unwrap());
+                    let task = state
+                        .global_state
+                        .lock()
+                        .unwrap()
+                        .tasks
+                        .get(task_id)
+                        .unwrap()
+                        .clone();
+                    //
+                    debug!(target: "task_list", task = ?task, state = ?state.global_state.lock().unwrap());
+                    state
+                        .global_state
+                        .lock()
+                        .unwrap()
+                        .task_form
+                        .open_for_edit(&task);
+                    //
+
+                    debug!(target: "task_list", task = ?task, state = ?state.global_state.lock().unwrap());
+                } else {
+                    state.global_state.lock().unwrap().status_message =
+                        Some(("No task selected to edit".to_string(), Color::Red));
+                }
+            }
+            (_, KeyCode::Char('d')) => {
+                // self.delete_selected_task();
             }
             _ => {}
         }

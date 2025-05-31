@@ -7,9 +7,10 @@ use ratatui::{
     buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     layout::{Constraint, Direction, Layout, Rect},
-    widgets::StatefulWidget,
+    widgets::{StatefulWidget, Widget},
 };
 use std::sync::{Arc, Mutex};
+use tui_logger::{TuiLoggerSmartWidget, TuiWidgetEvent};
 
 #[derive(Default)]
 pub struct DashboardPageState {
@@ -29,7 +30,7 @@ impl DashboardPageState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-enum DashboardWidget {
+pub enum DashboardWidget {
     #[default]
     TaskList,
     CurrentSession,
@@ -62,13 +63,17 @@ impl StatefulWidget for DashboardPage {
 
         TaskList::default().render(top_chunks[0], buf, &mut state.task_list_state);
 
-        self.render_not_implemented(
-            buf,
-            top_chunks[1],
-            "Current Session",
-            state.active_widget == DashboardWidget::CurrentSession,
-            1,
-        );
+        TuiLoggerSmartWidget::default()
+            .state(&state.global_state.lock().unwrap().debug_state)
+            .render(top_chunks[1], buf);
+
+        // self.render_not_implemented(
+        //     buf,
+        //     top_chunks[1],
+        //     "Current Session",
+        //     state.active_widget == DashboardWidget::CurrentSession,
+        //     1,
+        // );
 
         self.render_not_implemented(
             buf,
@@ -82,7 +87,40 @@ impl StatefulWidget for DashboardPage {
 
 impl Page for DashboardPage {
     fn handle_key_event(self, key: KeyEvent, state: &mut Self::State) -> Option<PageAction> {
-        TaskList::handle_key_event(key, &mut state.task_list_state);
+        match state.active_widget {
+            DashboardWidget::TaskList => {
+                TaskList {}.handle_key_event(key, &mut state.task_list_state)
+            }
+            DashboardWidget::CurrentSession => {
+                /* TuiLoggerSmartWidget currently */
+
+                let debug_widget_event = match key.code {
+                    KeyCode::Char(' ') => Some(TuiWidgetEvent::SpaceKey),
+                    KeyCode::Esc => Some(TuiWidgetEvent::EscapeKey),
+                    KeyCode::Char('j') => Some(TuiWidgetEvent::PrevPageKey),
+                    KeyCode::Char('k') => Some(TuiWidgetEvent::NextPageKey),
+                    KeyCode::Up => Some(TuiWidgetEvent::UpKey),
+                    KeyCode::Down => Some(TuiWidgetEvent::DownKey),
+                    KeyCode::Left => Some(TuiWidgetEvent::LeftKey),
+                    KeyCode::Right => Some(TuiWidgetEvent::RightKey),
+                    KeyCode::Char('+') => Some(TuiWidgetEvent::PlusKey),
+                    KeyCode::Char('-') => Some(TuiWidgetEvent::MinusKey),
+                    KeyCode::Char('h') => Some(TuiWidgetEvent::HideKey),
+                    KeyCode::Char('f') => Some(TuiWidgetEvent::FocusKey),
+                    _ => None,
+                };
+
+                if let Some(event) = debug_widget_event {
+                    state
+                        .global_state
+                        .lock()
+                        .unwrap()
+                        .debug_state
+                        .transition(event);
+                }
+            }
+            DashboardWidget::RecentActivity => todo!(),
+        }
         match (key.modifiers, key.code) {
             (modifiers, KeyCode::Tab) => {
                 if modifiers.contains(KeyModifiers::SHIFT) {
@@ -103,6 +141,7 @@ impl Page for DashboardPage {
 
             _ => None,
         }
+        //
     }
 
     fn on_activate(self, state: &mut Self::State) {
