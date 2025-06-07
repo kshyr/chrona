@@ -1,9 +1,9 @@
-pub mod dashboard;
 pub mod focus;
+pub mod home;
 pub mod planning;
 pub mod stats;
 
-pub use dashboard::DashboardPage;
 pub use focus::FocusPage;
+pub use home::HomePage;
 pub use planning::PlanningPage;
 pub use stats::StatsPage;

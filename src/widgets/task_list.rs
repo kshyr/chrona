@@ -2,20 +2,23 @@ use ratatui::{
     buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent},
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Color, Modifier, Style, Stylize as _},
     text::{Line, Span},
     widgets::{
-        Block, BorderType, HighlightSpacing, List, ListItem, ListState, Padding, StatefulWidget,
+        Block, BorderType, HighlightSpacing, List, ListItem, ListState, Padding, Paragraph,
+        StatefulWidget, Widget,
     },
 };
-use std::sync::{Arc, Mutex};
 use tracing::debug;
 
-use crate::{app::GlobalState, page::PageWidget, task::TaskId};
+use crate::{
+    app::App,
+    page::PageWidget,
+    task::{Task, TaskId, TaskStatus},
+};
 
 #[derive(Default)]
 pub struct TaskListState {
-    pub global_state: Arc<Mutex<GlobalState>>,
     pub is_active: bool,
     pub picked_tasks: Vec<usize>,
     pub list_state: ListState,
@@ -23,100 +26,181 @@ pub struct TaskListState {
 }
 
 impl TaskListState {
-    pub fn new(global_state: Arc<Mutex<GlobalState>>) -> Self {
+    pub fn new() -> Self {
         Self {
-            global_state,
-            ..Default::default()
+            is_active: false,
+            picked_tasks: Vec::new(),
+            list_state: ListState::default(),
+            last_selected: None,
         }
     }
-    pub fn toggle_pick_task(&mut self, task_id: TaskId) {
-        let is_picked = self.picked_tasks.contains(&task_id);
-        if is_picked {
-            self.picked_tasks.retain(|id| *id != task_id);
+
+    pub fn toggle_pick_task(&mut self, task_idx: usize) {
+        if self.picked_tasks.contains(&task_idx) {
+            self.picked_tasks.retain(|&id| id != task_idx);
         } else {
-            self.picked_tasks.push(task_id);
+            self.picked_tasks.push(task_idx);
+        }
+    }
+
+    pub fn select_next(&mut self, total_items: usize) {
+        if total_items == 0 {
+            self.list_state.select(None);
+            return;
+        }
+        let i = match self.list_state.selected() {
+            Some(i) => {
+                if i >= total_items - 1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.list_state.select(Some(i));
+    }
+
+    pub fn select_previous(&mut self, total_items: usize) {
+        if total_items == 0 {
+            self.list_state.select(None);
+            return;
+        }
+        let i = match self.list_state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    total_items - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.list_state.select(Some(i));
+    }
+
+    pub fn handle_key_event(
+        key: KeyEvent,
+        state: &mut TaskListState,
+        tasks: &[Task],
+    ) -> TaskListAction {
+        match key.code {
+            KeyCode::Char('j') | KeyCode::Down => {
+                state.select_next(tasks.len());
+                TaskListAction::SelectNext
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                state.select_previous(tasks.len());
+                TaskListAction::SelectPrevious
+            }
+            KeyCode::Char('a') => TaskListAction::AddTask,
+            KeyCode::Char('e') => {
+                if let Some(selected_idx) = state.list_state.selected() {
+                    if let Some(task) = tasks.get(selected_idx) {
+                        TaskListAction::EditSelectedTask(task.id)
+                    } else {
+                        debug!("Attempted to edit task at invalid index: {}", selected_idx);
+                        TaskListAction::None
+                    }
+                } else {
+                    TaskListAction::None
+                }
+            }
+            KeyCode::Char('d') => {
+                if let Some(selected_idx) = state.list_state.selected() {
+                    if let Some(task) = tasks.get(selected_idx) {
+                        TaskListAction::DeleteSelectedTask(task.id)
+                    } else {
+                        debug!(
+                            "Attempted to delete task at invalid index: {}",
+                            selected_idx
+                        );
+                        TaskListAction::None
+                    }
+                } else {
+                    TaskListAction::None
+                }
+            }
+            KeyCode::Char(' ') => {
+                if let Some(selected_idx) = state.list_state.selected() {
+                    state.toggle_pick_task(selected_idx);
+                }
+                TaskListAction::TogglePickSelected
+            }
+            _ => TaskListAction::None,
         }
     }
 }
 
-#[derive(Default)]
-pub struct TaskList;
+#[derive(Debug, PartialEq, Eq)]
+pub enum TaskListAction {
+    SelectNext,
+    SelectPrevious,
+    AddTask,
+    EditSelectedTask(TaskId),
+    DeleteSelectedTask(TaskId),
+    TogglePickSelected,
+    None,
+}
 
-impl StatefulWidget for TaskList {
-    type State = TaskListState;
+pub struct TaskList<'a> {
+    tasks: &'a [Task],
+    state: &'a mut TaskListState,
+}
 
-    fn render(
-        self,
-        area: ratatui::prelude::Rect,
-        buf: &mut ratatui::prelude::Buffer,
-        state: &mut Self::State,
-    ) {
-        let title = if state.is_active {
-            Line::from(vec![
-                Span::raw("Tasks ("),
-                Span::styled(
-                    format!("{}", state.global_state.lock().unwrap().tasks.len()),
-                    Style::default().fg(Color::Yellow),
-                ),
-                Span::raw(")"),
-                Span::styled(
-                    " [a: add] [e: edit] [d: delete] [space: select]",
-                    Style::default()
-                        .fg(Color::DarkGray)
-                        .add_modifier(Modifier::ITALIC),
-                ),
-            ])
-        } else {
-            Line::from(vec![
-                Span::raw("Tasks ("),
-                Span::raw(format!(
-                    "{}",
-                    state.global_state.lock().unwrap().tasks.len()
-                )),
-                Span::raw(")"),
-            ])
-        };
+impl<'a> TaskList<'a> {
+    pub fn new(tasks: &'a [Task], state: &'a mut TaskListState) -> Self {
+        Self { tasks, state }
+    }
+}
 
-        let mut block = Block::bordered()
-            .title(title.centered())
-            .border_type(if state.is_active {
-                BorderType::Thick
-            } else {
-                BorderType::Plain
-            })
-            .padding(Padding::vertical(1));
-
-        if !state.is_active {
-            block = block.border_style(Style::default().add_modifier(Modifier::DIM));
+impl<'a> Widget for TaskList<'a> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let mut border_style = Style::default().dim();
+        if self.state.is_active {
+            border_style = border_style.not_dim().yellow();
         }
 
-        let items: Vec<ListItem> = state
-            .global_state
-            .lock()
-            .unwrap()
+        let block = Block::bordered()
+            .title(Line::from(vec![
+                Span::from("[1] "),
+                Span::from("Today").bold(),
+            ]))
+            .border_type(BorderType::Rounded)
+            .padding(Padding::new(1, 1, 1, 1))
+            .border_style(border_style);
+
+        let items: Vec<ListItem> = self
             .tasks
             .iter()
             .enumerate()
             .map(|(i, task)| {
-                let prefix = if state.picked_tasks.contains(&i) {
-                    " [*] "
+                let prefix = if self.state.picked_tasks.contains(&i) {
+                    "[*] "
                 } else {
-                    " [ ] "
+                    "[ ] "
                 };
 
-                let created_at = task.created_at.format("%Y-%m-%d %H:%M");
+                let created_at = task.created_at.format("%y-%m-%d %H:%M");
 
                 let status_style = match task.status {
-                    crate::task::TaskStatus::Backlog => Style::default().fg(Color::Gray),
-                    crate::task::TaskStatus::Todo => Style::default().fg(Color::Blue),
-                    crate::task::TaskStatus::InProgress => Style::default().fg(Color::Yellow),
-                    crate::task::TaskStatus::Done => Style::default().fg(Color::Green),
+                    TaskStatus::Backlog => Style::default().fg(Color::DarkGray),
+                    TaskStatus::Todo => Style::default().fg(Color::Cyan),
+                    TaskStatus::InProgress => Style::default().fg(Color::Yellow),
+                    TaskStatus::Done => Style::default().fg(Color::Green),
                 };
 
                 let status_text = format!("{:?}", task.status);
 
                 let line = Line::from(vec![
-                    Span::raw(prefix),
+                    Span::styled(
+                        prefix,
+                        if self.state.is_active && self.state.list_state.selected() == Some(i) {
+                            Style::default().fg(Color::Yellow)
+                        } else {
+                            Style::default()
+                        },
+                    ),
                     Span::styled(
                         task.title.clone(),
                         Style::default().add_modifier(Modifier::BOLD),
@@ -134,7 +218,7 @@ impl StatefulWidget for TaskList {
             })
             .collect();
 
-        let list = List::new(items)
+        let list_widget = List::new(items)
             .block(block)
             .highlight_symbol("→ ")
             .highlight_spacing(HighlightSpacing::Always)
@@ -145,63 +229,17 @@ impl StatefulWidget for TaskList {
                     .bg(Color::DarkGray),
             );
 
-        list.render(area, buf, &mut state.list_state);
+        StatefulWidget::render(list_widget, area, buf, &mut self.state.list_state);
     }
 }
 
-impl PageWidget for TaskList {
-    fn handle_key_event(&self, key: KeyEvent, state: &mut Self::State) {
-        debug!(target: "task_list", state = ?state.global_state.lock().unwrap());
-        match (key.modifiers, key.code) {
-            (_, KeyCode::Char('j')) | (_, KeyCode::Down) => state.list_state.select_next(),
-            (_, KeyCode::Char('k')) | (_, KeyCode::Up) => state.list_state.select_previous(),
-            (_, KeyCode::Char('a')) => {
-                state
-                    .global_state
-                    .lock()
-                    .unwrap()
-                    .task_form
-                    .open_for_create();
-            }
-            (_, KeyCode::Char('e')) => {
-                //
-                debug!(target: "task_list", "clicked e");
-                if let Some(task_id) = state.list_state.selected() {
-                    //
-                    debug!(target: "task_list", task_id = ?task_id, state = ?state.global_state.lock().unwrap());
-                    let task = state
-                        .global_state
-                        .lock()
-                        .unwrap()
-                        .tasks
-                        .get(task_id)
-                        .unwrap()
-                        .clone();
-                    //
-                    debug!(target: "task_list", task = ?task, state = ?state.global_state.lock().unwrap());
-                    state
-                        .global_state
-                        .lock()
-                        .unwrap()
-                        .task_form
-                        .open_for_edit(&task);
-                    //
-
-                    debug!(target: "task_list", task = ?task, state = ?state.global_state.lock().unwrap());
-                } else {
-                    state.global_state.lock().unwrap().status_message =
-                        Some(("No task selected to edit".to_string(), Color::Red));
-                }
-            }
-            (_, KeyCode::Char('d')) => {
-                // self.delete_selected_task();
-            }
-            _ => {}
-        }
-    }
-
+impl<'a> PageWidget for TaskList<'a> {
     fn render_help(&self, area: Rect, buf: &mut Buffer) {
-        let help_text = "j/k: navigate, q: quit";
-        buf.set_string(area.x, area.y, help_text, Style::default());
+        let help_text = "[j/k: navigate] [a: add] [e: edit] [d: delete] [space: select]";
+        Paragraph::new(help_text)
+            .style(Style::default().fg(Color::DarkGray))
+            .render(area, buf);
     }
+
+    fn handle_key_event(&self, _key: KeyEvent, _app: &mut App) {}
 }

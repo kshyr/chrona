@@ -4,18 +4,15 @@ use ratatui::{
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     layout::{Constraint, Layout},
     style::{Color, Style},
-    widgets::{Clear, Paragraph},
+    widgets::Paragraph,
 };
-use std::{
-    fmt::Debug,
-    io::Stdout,
-    sync::{Arc, Mutex},
-};
+use std::{fmt::Debug, io::Stdout};
+use tracing::error;
 use tui_logger::TuiWidgetState;
 
 use crate::{
     help::{HelpScreen, HelpState},
-    page::{PageAction, PageManager, PageWidget},
+    page::PageManager,
     store::Store,
     task::Task,
     toml::TomlStore,
@@ -26,8 +23,9 @@ use crate::{
 };
 
 #[derive(Default)]
-pub struct GlobalState {
+pub struct App {
     pub running: bool,
+    pub page_manager: PageManager,
     pub task_form: TaskFormState,
     pub help_state: HelpState,
     pub debug_state: TuiWidgetState,
@@ -36,7 +34,7 @@ pub struct GlobalState {
     pub status_message: Option<(String, Color)>,
 }
 
-impl Debug for GlobalState {
+impl Debug for App {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(
             format!(
@@ -48,31 +46,21 @@ impl Debug for GlobalState {
     }
 }
 
-pub struct App {
-    global_state: Arc<Mutex<GlobalState>>,
-    page_manager: PageManager,
-}
-
 impl App {
     pub fn new() -> Self {
         let mut store = TomlStore::default();
         let tasks = store.load_all_tasks().unwrap_or_else(|e| {
-            eprintln!("Failed to load tasks: {}. Starting with an empty list.", e);
+            error!("Failed to load tasks: {}. Starting with an empty list.", e);
             Vec::new()
         });
 
-        let global_state = Arc::new(Mutex::new(GlobalState {
+        Self {
             running: true,
             tasks,
             store,
             status_message: None,
+            page_manager: PageManager::new(),
             ..Default::default()
-        }));
-        let page_manager = PageManager::new(global_state.clone());
-
-        Self {
-            global_state,
-            page_manager,
         }
     }
 
@@ -80,8 +68,8 @@ impl App {
         mut self,
         mut terminal: Terminal<CrosstermBackend<Stdout>>,
     ) -> color_eyre::Result<()> {
-        self.global_state.lock().unwrap().running = true;
-        while self.global_state.lock().unwrap().running {
+        self.running = true;
+        while self.running {
             terminal.draw(|frame| self.render(frame))?;
             self.handle_crossterm_events()?;
         }
@@ -89,36 +77,35 @@ impl App {
     }
 
     fn render(&mut self, frame: &mut Frame) {
-        let [navbar, main_area] =
-            Layout::vertical([Constraint::Min(3), Constraint::Percentage(100)]).areas(frame.area());
+        let [header_area, main_area] =
+            Layout::vertical([Constraint::Length(3), Constraint::Percentage(100)])
+                .areas(frame.area());
 
-        frame.render_widget(Clear, main_area);
-        self.page_manager.render(frame, main_area);
+        let [navbar_area, status_area] =
+            Layout::horizontal([Constraint::Percentage(100), Constraint::Length(24)])
+                .areas(header_area);
 
-        let gs = &mut self.global_state.lock().unwrap();
+        let tasks_ref = &self.tasks;
+        let debug_state_ref = &self.debug_state;
+        self.page_manager
+            .render(frame, main_area, tasks_ref, debug_state_ref);
 
-        if gs.task_form.is_modal_open {
-            frame.render_stateful_widget(
-                TaskForm {
-                    global_state: self.global_state.clone(),
-                },
-                frame.area(),
-                &mut gs.task_form,
-            );
+        if self.task_form.is_modal_open {
+            frame.render_stateful_widget(TaskForm, frame.area(), self);
         }
-        if gs.help_state.visible {
-            frame.render_stateful_widget(HelpScreen, frame.area(), &mut gs.help_state);
+        if self.help_state.visible {
+            frame.render_stateful_widget(HelpScreen, frame.area(), &mut self.help_state);
         }
 
-        if let Some((message, color)) = &gs.status_message {
+        if let Some((message, color)) = &self.status_message {
             frame.render_widget(
                 Paragraph::new(message.clone()).style(Style::default().fg(*color)),
-                navbar,
+                status_area,
             );
-        } else {
-            let active_page = self.page_manager.active_page;
-            frame.render_widget(Navbar::new(active_page), navbar);
         }
+
+        let active_page = self.page_manager.active_page;
+        frame.render_widget(Navbar::new(active_page), navbar_area);
     }
 
     fn handle_crossterm_events(&mut self) -> color_eyre::Result<()> {
@@ -126,29 +113,30 @@ impl App {
 
         match event {
             Event::Key(key) if key.kind == KeyEventKind::Press => {
-                if self.global_state.lock().unwrap().task_form.is_modal_open {
-                    //
-                    TaskForm {
-                        global_state: self.global_state.clone(),
-                    }
-                    .handle_key_event(key, &mut self.global_state.lock().unwrap().task_form);
-                } else if self.global_state.lock().unwrap().help_state.visible {
+                if self.task_form.is_modal_open {
+                    self.task_form.handle_key_event(
+                        key,
+                        event,
+                        &mut self.tasks,
+                        &mut self.store,
+                        &mut self.status_message,
+                    );
+                } else if self.help_state.visible {
                     if key.code == KeyCode::Esc || key.code == KeyCode::Char('?') {
-                        self.global_state.lock().unwrap().help_state.hide();
+                        self.help_state.hide();
                     }
                 } else {
-                    if key.code == KeyCode::Char('q') {
-                        self.quit();
-                    }
-                    //
-                    let action = self.page_manager.handle_key_event(key);
-                    //
-                    if action.is_none() || matches!(action, Some(PageAction::None)) {
-                        self.on_key_event(key);
-                    }
-                }
+                    self.on_key_event(key);
 
-                self.global_state.lock().unwrap().status_message = None;
+                    self.page_manager.handle_key_event(
+                        key,
+                        &mut self.tasks,
+                        &mut self.task_form,
+                        &mut self.store,
+                        &mut self.status_message,
+                        &mut self.debug_state,
+                    );
+                }
             }
             Event::Mouse(_) => {}
             Event::Resize(_, _) => {}
@@ -162,24 +150,13 @@ impl App {
             (_, KeyCode::Esc | KeyCode::Char('q'))
             | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => self.quit(),
             (_, KeyCode::Char('?')) => {
-                self.global_state.lock().unwrap().help_state.toggle();
+                self.help_state.toggle();
             }
             _ => {}
         }
     }
 
     fn quit(&mut self) {
-        self.global_state.lock().unwrap().running = false;
-    }
-
-    fn get_selected_task(&self) -> Option<Task> {
-        self.global_state.lock().unwrap().tasks.get(0).cloned()
-    }
-
-    fn delete_selected_task(&mut self) {
-        self.global_state.lock().unwrap().status_message = Some((
-            "Delete task functionality needs to be reimplemented for pages".to_string(),
-            Color::Yellow,
-        ));
+        self.running = false;
     }
 }

@@ -1,12 +1,17 @@
-use crate::{app::GlobalState, page::PageWidget, store::Store, ui::modal::centered_rect};
+use crate::{
+    app::App,
+    store::Store,
+    task::{Task, TaskStatus},
+    ui::modal::centered_rect,
+};
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers},
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    widgets::{Block, BorderType, Borders, Clear, Paragraph, StatefulWidget, Widget},
+    widgets::{Block, BorderType, Borders, Clear, Paragraph, StatefulWidget, Widget, Wrap},
 };
-use std::sync::{Arc, Mutex};
+use strum::IntoEnumIterator;
 use tracing::debug;
 use tui_input::{Input as TextInput, backend::crossterm::EventHandler};
 
@@ -30,65 +35,212 @@ pub struct TaskFormState {
     pub is_modal_open: bool,
     pub title_input: TextInput,
     pub description_input: TextInput,
-    pub status_input: TextInput,
     pub active_field: ActiveFormField,
     pub mode: FormMode,
     pub error_message: Option<String>,
     pub status_options: Vec<&'static str>,
-    pub status_selection: usize,
+    pub status_selection: TaskStatus,
 }
 
-pub struct TaskForm {
-    pub global_state: Arc<Mutex<GlobalState>>,
-}
+impl TaskFormState {
+    pub fn reset(&mut self) {
+        *self = Self::default();
+    }
 
-impl TaskForm {
-    pub fn create_task(state: &TaskFormState) -> Result<crate::task::Task, String> {
-        state.validate()?;
+    pub fn open_for_create(&mut self) {
+        self.reset();
+        self.is_modal_open = true;
+    }
 
+    pub fn open_for_edit(&mut self, task: &crate::task::Task) {
+        debug!("entered open_for_edit for task :{:?}", task);
+        self.reset();
+        self.title_input = TextInput::new(task.title.clone());
+        if let Some(desc) = &task.description {
+            self.description_input = TextInput::new(desc.clone());
+        }
+        self.status_selection = task.status.clone();
+        self.mode = FormMode::Edit(task.id);
+        self.is_modal_open = true;
+        debug!("TaskFormState prepared for editing task ID: {}", task.id);
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.title_input.value().trim().is_empty() {
+            return Err("Title cannot be empty".to_string());
+        }
+        Ok(())
+    }
+
+    pub fn create_task(&self) -> Result<crate::task::Task, String> {
+        self.validate()?;
         let now = chrono::Utc::now();
         Ok(crate::task::Task {
-            id: now.timestamp() as usize,
-            title: state.title_input.value().trim().to_string(),
-            description: if state.description_input.value().trim().is_empty() {
+            id: now
+                .timestamp_nanos_opt()
+                .unwrap_or_else(|| now.timestamp_micros()) as usize,
+            title: self.title_input.value().trim().to_string(),
+            description: if self.description_input.value().trim().is_empty() {
                 None
             } else {
-                Some(state.description_input.value().trim().to_string())
+                Some(self.description_input.value().trim().to_string())
             },
-            status: state.get_task_status(),
+            status: self.status_selection.clone(),
             created_at: now,
             updated_at: now,
         })
     }
 
-    pub fn update_task(state: &TaskFormState, task_id: usize) -> Result<crate::task::Task, String> {
-        debug!("entered update_task with id: {}", task_id);
-        state.validate()?;
-        debug!("called validate");
-
+    pub fn update_task(
+        &self,
+        task_id: usize,
+        original_created_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<crate::task::Task, String> {
+        self.validate()?;
         Ok(crate::task::Task {
             id: task_id,
-            title: state.title_input.value().trim().to_string(),
-            description: if state.description_input.value().trim().is_empty() {
+            title: self.title_input.value().trim().to_string(),
+            description: if self.description_input.value().trim().is_empty() {
                 None
             } else {
-                Some(state.description_input.value().trim().to_string())
+                Some(self.description_input.value().trim().to_string())
             },
-            status: state.get_task_status(),
-            created_at: chrono::Utc::now(),
+            status: self.status_selection.clone(),
+            created_at: original_created_at,
             updated_at: chrono::Utc::now(),
         })
-
-        // Ok(crate::task::Task::default())
     }
 
+    pub fn handle_key_event(
+        &mut self,
+        key: KeyEvent,
+        event: Event,
+        tasks: &mut Vec<Task>,
+        store: &mut dyn Store,
+        status_message: &mut Option<(String, Color)>,
+    ) {
+        match (key.modifiers, key.code) {
+            (_, KeyCode::Esc | KeyCode::Char('q'))
+            | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => {
+                self.is_modal_open = false;
+            }
+            (_, KeyCode::Tab) => {
+                if key.modifiers.contains(KeyModifiers::SHIFT) {
+                    self.prev_field();
+                } else {
+                    self.next_field();
+                }
+            }
+            (_, KeyCode::Char(' ')) if self.active_field == ActiveFormField::Status => {
+                self.cycle_status();
+            }
+            (_, KeyCode::Enter) => self.submit_form(tasks, store, status_message),
+            _ if self.active_field == ActiveFormField::Description => {
+                self.description_input.handle_event(&event);
+            }
+            _ if self.active_field == ActiveFormField::Title => {
+                self.title_input.handle_event(&event);
+            }
+            _ => {}
+        }
+    }
+
+    fn submit_form(
+        &mut self,
+        tasks: &mut Vec<Task>,
+        store: &mut dyn Store,
+        status_message: &mut Option<(String, Color)>,
+    ) {
+        match &self.mode {
+            FormMode::Create => match self.create_task() {
+                Ok(task) => {
+                    tasks.push(task.clone());
+                    if let Err(e) = store.append_task(task) {
+                        tracing::error!("Failed to save new task: {}", e);
+                        *status_message = Some((format!("Error saving task: {}", e), Color::Red));
+                    } else {
+                        *status_message =
+                            Some(("Task created successfully".to_string(), Color::Green));
+                        self.is_modal_open = false;
+                    }
+                }
+                Err(err) => {
+                    self.error_message = Some(err);
+                }
+            },
+            FormMode::Edit(task_id) => {
+                let task_id_val = *task_id;
+                if let Some(pos) = tasks.iter().position(|t| t.id == task_id_val) {
+                    let original_created_at = tasks[pos].created_at;
+                    match self.update_task(task_id_val, original_created_at) {
+                        Ok(updated_task) => {
+                            debug!(task = ?updated_task, task_id = task_id_val, "submit in Edit mode");
+                            tasks[pos] = updated_task.clone();
+                            if let Err(e) = store.update_task(task_id_val, updated_task) {
+                                tracing::error!("Failed to save updated task to store: {}", e);
+                                *status_message =
+                                    Some((format!("Error updating task: {}", e), Color::Red));
+                            } else {
+                                *status_message =
+                                    Some(("Task updated successfully".to_string(), Color::Green));
+                                self.is_modal_open = false;
+                            }
+                        }
+                        Err(err) => {
+                            debug!("Failed to update task: {}", err);
+                            self.error_message = Some(err);
+                        }
+                    }
+                } else {
+                    self.error_message = Some(format!(
+                        "Task with ID {} not found for update.",
+                        task_id_val
+                    ));
+                    tracing::error!(
+                        "Attempted to edit non-existent task with ID: {}",
+                        task_id_val
+                    );
+                }
+            }
+        }
+    }
+
+    pub fn next_field(&mut self) {
+        self.active_field = match self.active_field {
+            ActiveFormField::Title => ActiveFormField::Description,
+            ActiveFormField::Description => ActiveFormField::Status,
+            ActiveFormField::Status => ActiveFormField::Title,
+        }
+    }
+
+    pub fn prev_field(&mut self) {
+        self.active_field = match self.active_field {
+            ActiveFormField::Title => ActiveFormField::Status,
+            ActiveFormField::Description => ActiveFormField::Title,
+            ActiveFormField::Status => ActiveFormField::Description,
+        }
+    }
+    pub fn cycle_status(&mut self) {
+        self.status_selection = match self.status_selection {
+            TaskStatus::Backlog => TaskStatus::Todo,
+            TaskStatus::Todo => TaskStatus::InProgress,
+            TaskStatus::InProgress => TaskStatus::Done,
+            TaskStatus::Done => TaskStatus::Backlog,
+        }
+    }
+}
+
+pub struct TaskForm;
+
+impl TaskForm {
     fn render_background(&self, area: Rect, buf: &mut Buffer) {
         Block::default()
             .style(Style::default().add_modifier(Modifier::DIM))
             .render(area, buf);
     }
 
-    fn render_title_field(&self, buf: &mut Buffer, area: Rect, state: &mut TaskFormState) {
+    fn render_title_field(&self, buf: &mut Buffer, area: Rect, state: &TaskFormState) {
+        let width = area.width.max(3) - 3;
         self.render_field(
             buf,
             area,
@@ -96,10 +248,12 @@ impl TaskForm {
             state.title_input.value(),
             state.active_field == ActiveFormField::Title,
             state.title_input.visual_cursor(),
+            state.title_input.visual_scroll(width as usize),
         );
     }
 
-    fn render_description_field(&self, buf: &mut Buffer, area: Rect, state: &mut TaskFormState) {
+    fn render_description_field(&self, buf: &mut Buffer, area: Rect, state: &TaskFormState) {
+        let width = area.width.max(3) - 3;
         self.render_field(
             buf,
             area,
@@ -107,10 +261,11 @@ impl TaskForm {
             state.description_input.value(),
             state.active_field == ActiveFormField::Description,
             state.description_input.visual_cursor(),
+            state.description_input.visual_scroll(width as usize),
         );
     }
 
-    fn render_status_field(&self, buf: &mut Buffer, area: Rect, state: &mut TaskFormState) {
+    fn render_status_field(&self, buf: &mut Buffer, area: Rect, state: &TaskFormState) {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(15), Constraint::Min(0)])
@@ -126,17 +281,13 @@ impl TaskForm {
             Style::default().fg(Color::DarkGray)
         };
 
-        let status_text = state.status_options[state.status_selection];
+        let status_text = state.status_selection.as_ref();
 
         Paragraph::new(status_text)
             .block(Block::default().borders(Borders::BOTTOM))
             .style(status_style)
             .render(chunks[1], buf);
     }
-
-    // fn centered_text(&self) -> Paragraph<'static> {
-    //     Paragraph::new("").alignment(Alignment::Center)
-    // }
 
     fn render_field(
         &self,
@@ -146,6 +297,7 @@ impl TaskForm {
         value: &str,
         is_active: bool,
         cursor_position: usize,
+        scroll: usize,
     ) {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -165,16 +317,22 @@ impl TaskForm {
         Paragraph::new(value)
             .block(Block::default().borders(Borders::BOTTOM))
             .style(style)
+            .wrap(Wrap { trim: false })
             .render(chunks[1], buf);
 
         if is_active {
             let input_area = chunks[1];
-            let cursor_offset = cursor_position as u16;
+            let visible_width = input_area.width.saturating_sub(1) as usize;
+
+            let scroll_offset = cursor_position / visible_width;
+
+            let display_cursor_pos = cursor_position.saturating_sub(scroll_offset);
+
             let cursor_x = input_area
                 .x
-                .saturating_add(cursor_offset)
+                .saturating_add(display_cursor_pos as u16)
                 .min(input_area.right().saturating_sub(1));
-            let cursor_y = input_area.y;
+            let cursor_y = input_area.y + scroll_offset as u16;
 
             if cursor_x < input_area.right() {
                 buf.set_style(
@@ -187,10 +345,12 @@ impl TaskForm {
 }
 
 impl StatefulWidget for TaskForm {
-    type State = TaskFormState;
+    type State = App;
 
-    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        if !state.is_modal_open {
+    fn render(self, area: Rect, buf: &mut Buffer, app_state: &mut Self::State) {
+        let form_data = &app_state.task_form;
+
+        if !form_data.is_modal_open {
             return;
         }
 
@@ -199,7 +359,7 @@ impl StatefulWidget for TaskForm {
         let modal_area = centered_rect(70, 50, area);
         Clear.render(modal_area, buf);
 
-        let title = match state.mode {
+        let title = match form_data.mode {
             FormMode::Create => "Add New Task",
             FormMode::Edit(_) => "Edit Task",
         };
@@ -214,222 +374,34 @@ impl StatefulWidget for TaskForm {
 
         let main_layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(10), Constraint::Length(3)])
+            .constraints([Constraint::Min(10), Constraint::Length(1)])
             .split(content_area);
 
         let field_layout = Layout::default()
             .direction(Direction::Vertical)
             .margin(1)
             .constraints([
-                Constraint::Length(3),
-                Constraint::Min(5),
-                Constraint::Length(3),
-                Constraint::Length(1),
+                Constraint::Length(2),
+                Constraint::Min(3),
+                Constraint::Length(2),
             ])
             .split(main_layout[0]);
 
-        self.render_title_field(buf, field_layout[0], state);
-        self.render_description_field(buf, field_layout[1], state);
-        self.render_status_field(buf, field_layout[2], state);
+        self.render_title_field(buf, field_layout[0], form_data);
+        self.render_description_field(buf, field_layout[1], form_data);
+        self.render_status_field(buf, field_layout[2], form_data);
 
-        if let Some(error) = &state.error_message {
+        if let Some(error) = &form_data.error_message {
             Paragraph::new(error.as_str())
                 .style(Style::default().fg(Color::Red))
-                .render(field_layout[3], buf);
+                .render(field_layout[5], buf);
         }
 
-        let footer_text = "Tab: Next Field | Shift+Tab: Prev Field | Enter: Save | Esc: Cancel | Space: Cycle Status";
+        let footer_text =
+            "Tab: Next | Shift+Tab: Prev | Enter: Save | Esc: Cancel | Space: Cycle Status";
         Paragraph::new(footer_text)
             .style(Style::default().fg(Color::DarkGray))
             .centered()
             .render(main_layout[1], buf);
-    }
-}
-
-impl PageWidget for TaskForm {
-    fn handle_key_event(&self, key: KeyEvent, state: &mut Self::State) {
-        match (key.modifiers, key.code) {
-            (_, KeyCode::Esc | KeyCode::Char('q'))
-            | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => {
-                state.is_modal_open = false
-            }
-            (_, KeyCode::Tab) => {
-                if key.modifiers.contains(KeyModifiers::SHIFT) {
-                    state.prev_field();
-                } else {
-                    state.next_field();
-                }
-            }
-            (_, KeyCode::Char(' ')) if state.active_field == ActiveFormField::Status => {
-                state.cycle_status();
-            }
-            (_, KeyCode::Enter) => state.submit_form(self.global_state.clone()),
-            _ => {
-                if state.active_field != ActiveFormField::Status {
-                    let active_form_input: &mut TextInput = match state.active_field {
-                        ActiveFormField::Title => &mut state.title_input,
-                        ActiveFormField::Description => &mut state.description_input,
-                        _ => unreachable!(),
-                    };
-
-                    active_form_input.handle_event(&Event::Key(key));
-                }
-            }
-        }
-    }
-
-    fn render_help(&self, area: Rect, buf: &mut Buffer) {
-        todo!()
-    }
-}
-
-impl TaskFormState {
-    pub fn reset(&mut self) {
-        self.title_input.reset();
-        self.description_input.reset();
-        self.status_selection = 0;
-        self.active_field = ActiveFormField::Title;
-        self.status_options = vec!["Backlog", "Todo", "In Progress", "Done"];
-        self.error_message = None;
-        self.mode = FormMode::Create;
-    }
-
-    pub fn open_for_create(&mut self) {
-        self.reset();
-        self.is_modal_open = true;
-    }
-
-    pub fn open_for_edit(&mut self, task: &crate::task::Task) {
-        debug!("entered open_for_edit");
-        self.reset();
-        debug!("called reset");
-        self.title_input = TextInput::new(task.title.clone());
-        debug!("created TextInput for title");
-
-        if let Some(desc) = &task.description {
-            self.description_input = TextInput::new(desc.clone());
-            debug!("created TextInput for description");
-        }
-
-        self.status_selection = match task.status {
-            crate::task::TaskStatus::Backlog => 0,
-            crate::task::TaskStatus::Todo => 1,
-            crate::task::TaskStatus::InProgress => 2,
-            crate::task::TaskStatus::Done => 3,
-        };
-        debug!("defined status selection?");
-
-        self.mode = FormMode::Edit(task.id);
-        debug!("set FormMode::Edit(task.id)");
-        self.is_modal_open = true;
-        debug!("set modal is open");
-        // self.update_global_state(global_state);
-        // debug!("update global_state");
-    }
-
-    pub fn validate(&self) -> Result<(), String> {
-        if self.title_input.value().trim().is_empty() {
-            return Err("Title cannot be empty".to_string());
-        }
-        Ok(())
-    }
-
-    fn update_global_state(&mut self, global_state: Arc<Mutex<GlobalState>>) {
-        global_state.lock().unwrap().task_form = self.clone();
-    }
-
-    fn submit_form(&mut self, global_state: Arc<Mutex<GlobalState>>) {
-        match &self.mode {
-            FormMode::Create => match TaskForm::create_task(&self) {
-                Ok(task) => {
-                    global_state.lock().unwrap().tasks.push(task.clone());
-                    global_state
-                        .lock()
-                        .unwrap()
-                        .store
-                        .append_task(task)
-                        .unwrap_or_else(|e| {
-                            eprintln!("Failed to save tasks: {}", e);
-                        });
-                    self.is_modal_open = false;
-
-                    global_state.lock().unwrap().status_message =
-                        Some(("Task created successfully".to_string(), Color::Green));
-                }
-                Err(err) => {
-                    self.error_message = Some(err);
-                }
-            },
-            FormMode::Edit(task_id) => match TaskForm::update_task(&self, *task_id) {
-                Ok(updated_task) => {
-                    debug!("submit in Edit mode");
-                    debug!(task = ?updated_task, task_id = task_id);
-                    debug!("{:?}", global_state);
-                    let gs_lock = global_state.lock();
-                    debug!("{:?}", gs_lock);
-                    let gs = match global_state.lock() {
-                        Ok(v) => {
-                            debug!("{:?}", v);
-                            v
-                        }
-                        Err(e) => {
-                            debug!("{}", e);
-                            panic!("{}", e)
-                        }
-                    };
-                    debug!("gs: {:?}", gs);
-                    if let Some(task) = gs.tasks.iter().find(|t| t.id == *task_id) {
-                        debug!("Task updated successfully: {:?}", *task);
-                    } else {
-                        debug!("task did not update");
-                        panic!();
-                    }
-
-                    self.is_modal_open = false;
-                    // self.update_global_state(global_state.clone());
-                    debug!(
-                        open = self.is_modal_open,
-                        global_open = global_state.lock().unwrap().task_form.is_modal_open
-                    );
-
-                    global_state.lock().unwrap().status_message =
-                        Some(("Task updated successfully".to_string(), Color::Green));
-                }
-                Err(err) => {
-                    debug!("Failed to update task: {}", err);
-                    self.error_message = Some(err);
-                }
-            },
-        }
-    }
-
-    pub fn get_task_status(&self) -> crate::task::TaskStatus {
-        match self.status_selection {
-            0 => crate::task::TaskStatus::Backlog,
-            1 => crate::task::TaskStatus::Todo,
-            2 => crate::task::TaskStatus::InProgress,
-            3 => crate::task::TaskStatus::Done,
-            _ => crate::task::TaskStatus::Backlog,
-        }
-    }
-
-    pub fn next_field(&mut self) {
-        self.active_field = match self.active_field {
-            ActiveFormField::Title => ActiveFormField::Description,
-            ActiveFormField::Description => ActiveFormField::Status,
-            ActiveFormField::Status => ActiveFormField::Title,
-        }
-    }
-
-    pub fn prev_field(&mut self) {
-        self.active_field = match self.active_field {
-            ActiveFormField::Title => ActiveFormField::Status,
-            ActiveFormField::Description => ActiveFormField::Title,
-            ActiveFormField::Status => ActiveFormField::Description,
-        }
-    }
-
-    pub fn cycle_status(&mut self) {
-        self.status_selection = (self.status_selection + 1) % self.status_options.len();
     }
 }

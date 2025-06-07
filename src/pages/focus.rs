@@ -1,7 +1,8 @@
 use crate::{
-    app::GlobalState,
-    page::{Page, PageAction},
+    page::{Page, PageAction, cycle_widget_index},
     task::Task,
+    toml::TomlStore,
+    widgets::task_form::TaskFormState,
 };
 use ratatui::{
     buffer::Buffer,
@@ -9,23 +10,28 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph, StatefulWidget, Widget},
+    widgets::{Block, Borders, Paragraph, Widget as _ /* StatefulWidget, Widget */},
 };
-use std::sync::{Arc, Mutex};
+use tui_logger::TuiWidgetState;
 
 #[derive(Default)]
 pub struct FocusPageState {
-    global_state: Arc<Mutex<GlobalState>>,
-    tasks: Vec<Task>,
-    active_widget: FocusWidget,
-    selected_task_idx: Option<usize>,
+    pub active_widget: FocusWidget,
+    pub selected_task_idx: Option<usize>,
 }
 
 impl FocusPageState {
-    pub fn new(global_state: Arc<Mutex<GlobalState>>) -> Self {
+    pub fn new() -> Self {
         Self {
-            global_state,
+            selected_task_idx: None,
             ..Default::default()
+        }
+    }
+    pub fn set_selected_task_by_id(&mut self, tasks: &[Task], task_id_to_find: Option<usize>) {
+        if let Some(id) = task_id_to_find {
+            self.selected_task_idx = tasks.iter().position(|t| t.id == id);
+        } else {
+            self.selected_task_idx = None;
         }
     }
 }
@@ -33,7 +39,7 @@ impl FocusPageState {
 #[derive(Default, Clone, Copy)]
 pub struct FocusPage;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, strum_macros::EnumIter)]
 enum FocusWidget {
     #[default]
     CurrentTask,
@@ -41,10 +47,15 @@ enum FocusWidget {
     SessionLogs,
 }
 
-impl StatefulWidget for FocusPage {
-    type State = FocusPageState;
-
-    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+impl FocusPage {
+    pub fn render(
+        self,
+        area: Rect,
+        buf: &mut Buffer,
+        page_state: &mut FocusPageState,
+        tasks: &[Task],
+        _debug_state: &TuiWidgetState,
+    ) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(1), Constraint::Length(1)])
@@ -57,37 +68,43 @@ impl StatefulWidget for FocusPage {
             .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
             .split(main_area);
 
-        self.render_current_task(main_chunks[0], buf, state);
+        self.render_current_task(main_chunks[0], buf, page_state, tasks);
 
         let bottom_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(main_chunks[1]);
 
-        self.render_not_implemented(
+        Self::render_not_implemented(
             buf,
             bottom_chunks[0],
             "Timer",
-            state.active_widget == FocusWidget::Timer,
+            page_state.active_widget == FocusWidget::Timer,
             1,
         );
 
-        self.render_not_implemented(
+        Self::render_not_implemented(
             buf,
             bottom_chunks[1],
             "Session Logs",
-            state.active_widget == FocusWidget::SessionLogs,
+            page_state.active_widget == FocusWidget::SessionLogs,
             2,
         );
     }
 }
 
 impl FocusPage {
-    fn render_current_task(&self, area: Rect, buf: &mut Buffer, state: &mut FocusPageState) {
+    fn render_current_task(
+        &self,
+        area: Rect,
+        buf: &mut Buffer,
+        page_state: &mut FocusPageState,
+        tasks: &[Task],
+    ) {
         let block = Block::default()
             .title("Current Task")
             .borders(Borders::ALL)
-            .style(if state.active_widget == FocusWidget::CurrentTask {
+            .style(if page_state.active_widget == FocusWidget::CurrentTask {
                 Style::default()
             } else {
                 Style::default().add_modifier(Modifier::DIM)
@@ -96,8 +113,8 @@ impl FocusPage {
         let inner = block.inner(area);
         block.render(area, buf);
 
-        if let Some(idx) = state.selected_task_idx {
-            if let Some(task) = state.tasks.get(idx) {
+        if let Some(idx) = page_state.selected_task_idx {
+            if let Some(task) = tasks.get(idx) {
                 let status_style = match task.status {
                     crate::task::TaskStatus::Backlog => Style::default().fg(Color::Gray),
                     crate::task::TaskStatus::Todo => Style::default().fg(Color::Blue),
@@ -105,77 +122,105 @@ impl FocusPage {
                     crate::task::TaskStatus::Done => Style::default().fg(Color::Green),
                 };
 
-                let mut text = Vec::new();
-                text.push(Line::from(Span::styled(
+                let mut text_lines = Vec::new();
+                text_lines.push(Line::from(Span::styled(
                     &task.title,
                     Style::default().add_modifier(Modifier::BOLD),
                 )));
 
-                text.push(Line::from(vec![
+                text_lines.push(Line::from(vec![
                     Span::raw("Status: "),
                     Span::styled(format!("{:?}", task.status), status_style),
                 ]));
 
                 if let Some(desc) = &task.description {
-                    text.push(Line::default());
-                    text.push(Line::from(desc.clone()));
+                    text_lines.push(Line::default());
+                    text_lines.push(Line::from(desc.clone()));
                 }
 
-                Paragraph::new(Text::from(text))
+                Paragraph::new(Text::from(text_lines))
                     .centered()
                     .render(inner, buf);
             } else {
-                Paragraph::new("No task selected")
+                Paragraph::new("Selected task not found. Maybe it was deleted?")
                     .style(Style::default().fg(Color::DarkGray))
                     .centered()
                     .render(inner, buf);
+                page_state.selected_task_idx = None;
             }
         } else {
-            Paragraph::new("Select a task to focus on")
-                .style(Style::default().fg(Color::DarkGray))
-                .centered()
-                .render(inner, buf);
+            Paragraph::new(
+                "Select a task to focus on (Press 't' from this page to pick first task)",
+            )
+            .style(Style::default().fg(Color::DarkGray))
+            .centered()
+            .render(inner, buf);
         }
     }
 }
 
 impl Page for FocusPage {
-    fn handle_key_event(self, key: KeyEvent, state: &mut Self::State) -> Option<PageAction> {
+    type State = FocusPageState;
+
+    fn render(
+        self,
+        area: Rect,
+        buf: &mut Buffer,
+        page_state: &mut Self::State,
+        tasks: &[Task],
+        debug_state: &TuiWidgetState,
+    ) {
+        FocusPage::render(self, area, buf, page_state, tasks, debug_state);
+    }
+
+    fn handle_key_event(
+        &self,
+        key: KeyEvent,
+        page_state: &mut Self::State,
+        tasks: &mut Vec<Task>,
+        _task_form: &mut TaskFormState,
+        _store: &mut TomlStore,
+        status_message: &mut Option<(String, Color)>,
+        _debug_state: &mut TuiWidgetState,
+    ) -> Option<PageAction> {
         match (key.modifiers, key.code) {
             (modifiers, KeyCode::Tab) => {
-                if modifiers.contains(KeyModifiers::SHIFT) {
-                    state.active_widget = match state.active_widget {
-                        FocusWidget::CurrentTask => FocusWidget::SessionLogs,
-                        FocusWidget::Timer => FocusWidget::CurrentTask,
-                        FocusWidget::SessionLogs => FocusWidget::Timer,
-                    };
+                page_state.active_widget = cycle_widget_index(
+                    page_state.active_widget,
+                    modifiers.contains(KeyModifiers::SHIFT),
+                );
+                Some(PageAction::None)
+            }
+            (_, KeyCode::Char('t')) => {
+                if !tasks.is_empty() {
+                    page_state.set_selected_task_by_id(tasks, Some(tasks[0].id));
                 } else {
-                    state.active_widget = match state.active_widget {
-                        FocusWidget::CurrentTask => FocusWidget::Timer,
-                        FocusWidget::Timer => FocusWidget::SessionLogs,
-                        FocusWidget::SessionLogs => FocusWidget::CurrentTask,
-                    };
+                    *status_message = Some(("No tasks to focus on.".to_string(), Color::Yellow));
                 }
                 Some(PageAction::None)
             }
-
-            (_, KeyCode::Char('t')) => Some(PageAction::None),
-            (_, KeyCode::Char('p')) => Some(PageAction::None),
-            (_, KeyCode::Char('s')) => Some(PageAction::None),
-
+            (_, KeyCode::Char('p')) => {
+                /* TODO: Pause timer */
+                Some(PageAction::None)
+            }
+            (_, KeyCode::Char('s')) => {
+                /* TODO: Stop timer/session */
+                Some(PageAction::None)
+            }
             _ => None,
         }
     }
 
-    fn on_activate(self, state: &mut Self::State) {
+    fn on_activate(&self, state: &mut Self::State) {
         state.active_widget = FocusWidget::CurrentTask;
     }
 
-    fn on_deactivate(self, state: &mut Self::State) {
+    fn on_deactivate(&self, state: &mut Self::State) {
         state.active_widget = FocusWidget::CurrentTask;
+        state.selected_task_idx = None;
     }
 
-    fn select_widget(self, index: usize, state: &mut Self::State) {
+    fn select_widget(&self, index: usize, state: &mut Self::State) {
         state.active_widget = match index {
             0 => FocusWidget::CurrentTask,
             1 => FocusWidget::Timer,

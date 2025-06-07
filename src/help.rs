@@ -22,10 +22,6 @@ impl HelpState {
         self.visible = !self.visible;
     }
 
-    // pub fn show(&mut self) {
-    //     self.visible = true;
-    // }
-
     pub fn hide(&mut self) {
         self.visible = false;
     }

@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
+use strum_macros::{AsRefStr, EnumIter};
 
 pub type TaskId = usize;
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, EnumIter, AsRefStr, Serialize, Deserialize)]
 pub enum TaskStatus {
     #[default]
     Backlog,
