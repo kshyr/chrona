@@ -1,5 +1,5 @@
 use crate::{
-    app::App,
+    app::{App, StatusMessage},
     store::Store,
     task::{Task, TaskStatus},
     ui::modal::centered_rect,
@@ -117,7 +117,7 @@ impl TaskFormState {
         event: Event,
         tasks: &mut Vec<Task>,
         store: &mut dyn Store,
-        status_message: &mut Option<(String, Color)>,
+        status_message: &mut StatusMessage,
     ) {
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc | KeyCode::Char('q'))
@@ -149,7 +149,7 @@ impl TaskFormState {
         &mut self,
         tasks: &mut Vec<Task>,
         store: &mut dyn Store,
-        status_message: &mut Option<(String, Color)>,
+        status_message: &mut StatusMessage,
     ) {
         match &self.mode {
             FormMode::Create => match self.create_task() {
@@ -157,10 +157,10 @@ impl TaskFormState {
                     tasks.push(task.clone());
                     if let Err(e) = store.append_task(task) {
                         tracing::error!("Failed to save new task: {}", e);
-                        *status_message = Some((format!("Error saving task: {}", e), Color::Red));
+                        *status_message = StatusMessage::error(format!("Error saving task: {}", e));
                     } else {
                         *status_message =
-                            Some(("Task created successfully".to_string(), Color::Green));
+                            StatusMessage::success("Task created successfully".into());
                         self.is_modal_open = false;
                     }
                 }
@@ -179,10 +179,9 @@ impl TaskFormState {
                             if let Err(e) = store.update_task(task_id_val, updated_task) {
                                 tracing::error!("Failed to save updated task to store: {}", e);
                                 *status_message =
-                                    Some((format!("Error updating task: {}", e), Color::Red));
+                                    StatusMessage::error(format!("Error updating task: {}", e));
                             } else {
-                                *status_message =
-                                    Some(("Task updated successfully".to_string(), Color::Green));
+                                StatusMessage::success("Task updated successfully".into());
                                 self.is_modal_open = false;
                             }
                         }

@@ -1,3 +1,4 @@
+use chrono::{DateTime, Duration, Utc};
 use ratatui::{
     Frame, Terminal,
     backend::CrosstermBackend,
@@ -22,6 +23,37 @@ use crate::{
     },
 };
 
+#[derive(Default, Debug, Clone)]
+pub struct StatusMessage {
+    message: String,
+    color: Color,
+    exp: DateTime<Utc>,
+}
+
+impl StatusMessage {
+    pub fn new(message: String, color: Color) -> Self {
+        Self {
+            message,
+            color,
+            exp: Utc::now(),
+        }
+        .duration(Duration::seconds(5))
+    }
+
+    pub fn error(message: String) -> Self {
+        Self::new(message, Color::Red)
+    }
+
+    pub fn success(message: String) -> Self {
+        Self::new(message, Color::Green)
+    }
+
+    pub fn duration(mut self, duration: Duration) -> Self {
+        self.exp = Utc::now() + duration;
+        self
+    }
+}
+
 #[derive(Default)]
 pub struct App {
     pub running: bool,
@@ -31,7 +63,7 @@ pub struct App {
     pub debug_state: TuiWidgetState,
     pub tasks: Vec<Task>,
     pub store: TomlStore,
-    pub status_message: Option<(String, Color)>,
+    pub status_message: StatusMessage,
 }
 
 impl Debug for App {
@@ -58,7 +90,6 @@ impl App {
             running: true,
             tasks,
             store,
-            status_message: None,
             page_manager: PageManager::new(),
             ..Default::default()
         }
@@ -82,8 +113,7 @@ impl App {
                 .areas(frame.area());
 
         let [navbar_area, status_area] =
-            Layout::horizontal([Constraint::Percentage(100), Constraint::Length(24)])
-                .areas(header_area);
+            Layout::horizontal([Constraint::Fill(3), Constraint::Fill(1)]).areas(header_area);
 
         let tasks_ref = &self.tasks;
         let debug_state_ref = &self.debug_state;
@@ -97,9 +127,10 @@ impl App {
             frame.render_stateful_widget(HelpScreen, frame.area(), &mut self.help_state);
         }
 
-        if let Some((message, color)) = &self.status_message {
+        if chrono::Utc::now() < self.status_message.exp {
             frame.render_widget(
-                Paragraph::new(message.clone()).style(Style::default().fg(*color)),
+                Paragraph::new(self.status_message.message.clone())
+                    .style(Style::default().fg(self.status_message.color)),
                 status_area,
             );
         }

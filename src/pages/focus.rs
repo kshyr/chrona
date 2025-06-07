@@ -1,4 +1,5 @@
 use crate::{
+    app::StatusMessage,
     page::{Page, PageAction, cycle_widget_index},
     task::Task,
     toml::TomlStore,
@@ -180,7 +181,7 @@ impl Page for FocusPage {
         tasks: &mut Vec<Task>,
         _task_form: &mut TaskFormState,
         _store: &mut TomlStore,
-        status_message: &mut Option<(String, Color)>,
+        status_message: &mut StatusMessage,
         _debug_state: &mut TuiWidgetState,
     ) -> Option<PageAction> {
         match (key.modifiers, key.code) {
@@ -195,7 +196,7 @@ impl Page for FocusPage {
                 if !tasks.is_empty() {
                     page_state.set_selected_task_by_id(tasks, Some(tasks[0].id));
                 } else {
-                    *status_message = Some(("No tasks to focus on.".to_string(), Color::Yellow));
+                    *status_message = StatusMessage::error("No tasks to focus on.".into());
                 }
                 Some(PageAction::None)
             }

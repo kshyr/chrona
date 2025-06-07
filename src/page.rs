@@ -9,7 +9,7 @@ use ratatui::{
 };
 
 use crate::{
-    app::App,
+    app::{App, StatusMessage},
     pages::{
         FocusPage, HomePage, PlanningPage, StatsPage, focus::FocusPageState, home::HomePageState,
         planning::PlanningPageState, stats::StatsPageState,
@@ -100,7 +100,7 @@ pub trait Page {
         tasks: &mut Vec<Task>,
         task_form: &mut TaskFormState,
         store: &mut TomlStore,
-        status_message: &mut Option<(String, Color)>,
+        status_message: &mut StatusMessage,
         debug_state: &mut TuiWidgetState,
     ) -> Option<PageAction>;
 
@@ -250,7 +250,7 @@ impl PageManager {
         tasks: &mut Vec<Task>,
         task_form: &mut TaskFormState,
         store: &mut TomlStore,
-        status_message: &mut Option<(String, Color)>,
+        status_message: &mut StatusMessage,
         debug_state: &mut TuiWidgetState,
     ) -> Option<PageAction> {
         let global_action = match (key.modifiers, key.code) {

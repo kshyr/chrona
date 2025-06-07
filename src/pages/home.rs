@@ -1,4 +1,5 @@
 use crate::{
+    app::StatusMessage,
     page::{Page, PageAction, cycle_widget_index},
     store::Store,
     task::Task,
@@ -111,7 +112,7 @@ impl Page for HomePage {
         tasks: &mut Vec<Task>,
         task_form: &mut TaskFormState,
         store: &mut TomlStore,
-        status_message: &mut Option<(String, Color)>,
+        status_message: &mut StatusMessage,
         debug_state: &mut TuiWidgetState,
     ) -> Option<PageAction> {
         match page_state.active_widget {
@@ -128,7 +129,7 @@ impl Page for HomePage {
                             task_form.open_for_edit(&task);
                         } else {
                             *status_message =
-                                Some(("Task not found for editing.".to_string(), Color::Red));
+                                StatusMessage::error("Task not found for editing.".into());
                         }
                         return Some(PageAction::None);
                     }
@@ -136,17 +137,16 @@ impl Page for HomePage {
                         if let Some(idx) = tasks.iter().position(|t| t.id == task_id) {
                             tasks.remove(idx);
                             if let Err(e) = store.save_all_tasks(tasks.clone()) {
-                                *status_message = Some((
-                                    format!("Failed to save tasks after delete: {}", e),
-                                    Color::Red,
+                                *status_message = StatusMessage::error(format!(
+                                    "Failed to save tasks after delete: {}",
+                                    e
                                 ));
                             } else {
                                 *status_message =
-                                    Some(("Task deleted successfully.".to_string(), Color::Green));
+                                    StatusMessage::success("Task deleted successfully".into());
                             }
                         } else {
-                            *status_message =
-                                Some(("Task to delete not found.".to_string(), Color::Red));
+                            StatusMessage::error("Task to delete not found.".into());
                         }
                         return Some(PageAction::None);
                     }

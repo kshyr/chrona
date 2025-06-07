@@ -1,4 +1,5 @@
 use crate::{
+    app::StatusMessage,
     page::{Page, PageAction, cycle_widget_index},
     task::Task,
     toml::TomlStore,
@@ -108,7 +109,7 @@ impl Page for StatsPage {
         _tasks: &mut Vec<Task>,
         _task_form: &mut TaskFormState,
         _store: &mut TomlStore,
-        _status_message: &mut Option<(String, ratatui::style::Color)>,
+        _status_message: &mut StatusMessage,
         _debug_state: &mut TuiWidgetState,
     ) -> Option<PageAction> {
         match (key.modifiers, key.code) {
