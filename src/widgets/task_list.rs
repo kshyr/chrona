@@ -22,7 +22,6 @@ pub struct TaskListState {
     pub is_active: bool,
     pub picked_tasks: Vec<usize>,
     pub list_state: ListState,
-    pub last_selected: Option<usize>,
 }
 
 impl TaskListState {
@@ -31,7 +30,6 @@ impl TaskListState {
             is_active: false,
             picked_tasks: Vec::new(),
             list_state: ListState::default(),
-            last_selected: None,
         }
     }
 

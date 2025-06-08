@@ -8,17 +8,23 @@ edition = "2024"
 
 [dependencies]
 ratatui = { version = "0.30.0-alpha.4", features = ["all-widgets"] }
-chrono = { version = "0.4.41", features = ["serde"] }
-color-eyre = "0.6.5"
+chrono = "0.4.41"
 toml = "0.8.23"
-serde = { version = "1.0.219", features = ["derive"] }
+serde = "1.0.219"
+serde_json = "1.0.140"
 directories = "6.0.0"
 tui-textarea = "0.7.0"
 tui-input = "0.12.1"
 tui-widgets = "0.4.1"
-strum = "0.27"
-strum_macros = "0.27"
+strum = "0.27.1"
+strum_macros = "0.27.1"
 tui-logger = { version = "0.17.3", features = ["tracing-support"] }
 tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
 unicode-segmentation = "1.12.0"
+anyhow = "1.0.98"
+dotenv = "0.15.0"
+oauth2 = { version = "5.0.0", features = ["ureq"] }
+webbrowser = "1.0.4"
+keyring = { version = "3.6.2", features = ["apple-native", "windows-native", "linux-native"] }
+serde_with = "3.12.0"

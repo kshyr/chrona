@@ -2,9 +2,10 @@ use crate::{
     store::{Store, get_data_dir},
     task::{Task, TaskId},
 };
-use color_eyre::eyre;
+use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
+use tracing::error;
 
 const TOML_TASKS_EXAMPLE: &'static str = r#"
 [[tasks]]
@@ -52,7 +53,7 @@ impl Default for TomlStore {
             tasks: Vec::new(),
         };
         store.tasks = store.load_all_tasks().unwrap_or_else(|err| {
-            eprintln!("Failed to load tasks, starting with example: {}", err);
+            error!("Failed to load tasks, starting with example: {}", err);
             if let Ok(example_store) = toml::from_str::<TomlStoreFile>(TOML_TASKS_EXAMPLE) {
                 example_store.tasks
             } else {
@@ -64,7 +65,7 @@ impl Default for TomlStore {
 }
 
 impl TomlStore {
-    fn ensure_directory_exists(&self) -> color_eyre::Result<()> {
+    fn ensure_directory_exists(&self) -> Result<()> {
         if let Some(parent_dir) = self.file_path.parent() {
             fs::create_dir_all(parent_dir)?;
         }
@@ -73,27 +74,27 @@ impl TomlStore {
 }
 
 impl Store for TomlStore {
-    fn load_all_tasks(&mut self) -> color_eyre::Result<Vec<Task>> {
+    fn load_all_tasks(&mut self) -> Result<Vec<Task>> {
         if self.file_path.exists() {
             let content = fs::read_to_string(&self.file_path)?;
             let store: TomlStoreFile = toml::from_str(&content)?;
             self.tasks = store.tasks;
             return Ok(self.tasks.clone());
         } else {
-            println!(
+            error!(
                 "Tasks file not found at {:?}, loading example tasks.",
                 self.file_path
             );
             let store: TomlStoreFile = match toml::from_str(TOML_TASKS_EXAMPLE) {
                 Ok(tasks_data) => tasks_data,
                 Err(err) => {
-                    eprintln!("Error parsing example tasks: {}", err);
-                    return Err(eyre::eyre!("Failed to parse example tasks: {}", err));
+                    error!("Error parsing example tasks: {}", err);
+                    return Err(anyhow!("Failed to parse example tasks: {}", err));
                 }
             };
             self.tasks = store.tasks.clone();
             if let Err(e) = self.save_all_tasks(self.tasks.clone()) {
-                eprintln!(
+                error!(
                     "Could not save initial example tasks to {:?}: {}",
                     self.file_path, e
                 );
@@ -102,7 +103,7 @@ impl Store for TomlStore {
         }
     }
 
-    fn save_all_tasks(&mut self, tasks: Vec<Task>) -> color_eyre::Result<()> {
+    fn save_all_tasks(&mut self, tasks: Vec<Task>) -> Result<()> {
         self.ensure_directory_exists()?;
         let toml_content = toml::to_string(&TomlStoreFile {
             tasks: tasks.clone(),
@@ -112,25 +113,25 @@ impl Store for TomlStore {
         Ok(())
     }
 
-    fn append_task(&mut self, task: Task) -> color_eyre::Result<()> {
+    fn append_task(&mut self, task: Task) -> Result<()> {
         let mut current_tasks = self.load_all_tasks()?;
         current_tasks.push(task);
         self.save_all_tasks(current_tasks)
     }
 
-    fn delete_task(&mut self, id: TaskId) -> color_eyre::Result<()> {
+    fn delete_task(&mut self, id: TaskId) -> Result<()> {
         let mut current_tasks = self.load_all_tasks()?;
         current_tasks.retain(|task| task.id != id);
         self.save_all_tasks(current_tasks)
     }
 
-    fn update_task(&mut self, id: TaskId, updated_task: Task) -> color_eyre::Result<()> {
+    fn update_task(&mut self, id: TaskId, updated_task: Task) -> Result<()> {
         let mut current_tasks = self.load_all_tasks()?;
         if let Some(task_to_update) = current_tasks.iter_mut().find(|task| task.id == id) {
             *task_to_update = updated_task;
             self.save_all_tasks(current_tasks)
         } else {
-            Err(eyre::eyre!("Task with ID {} not found for update", id))
+            Err(anyhow!("Task with ID {} not found for update", id))
         }
     }
 }

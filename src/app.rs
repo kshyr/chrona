@@ -1,3 +1,4 @@
+use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
 use ratatui::{
     Frame, Terminal,
@@ -95,10 +96,7 @@ impl App {
         }
     }
 
-    pub fn run(
-        mut self,
-        mut terminal: Terminal<CrosstermBackend<Stdout>>,
-    ) -> color_eyre::Result<()> {
+    pub fn run(mut self, mut terminal: Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
         self.running = true;
         while self.running {
             terminal.draw(|frame| self.render(frame))?;
@@ -139,7 +137,7 @@ impl App {
         frame.render_widget(Navbar::new(active_page), navbar_area);
     }
 
-    fn handle_crossterm_events(&mut self) -> color_eyre::Result<()> {
+    fn handle_crossterm_events(&mut self) -> Result<()> {
         let event = event::read()?;
 
         match event {
@@ -151,6 +149,15 @@ impl App {
                         &mut self.tasks,
                         &mut self.store,
                         &mut self.status_message,
+                        match self.page_manager.active_page {
+                            crate::page::PageType::Home => {
+                                &mut self.page_manager.home_page_state.task_list_state
+                            }
+                            crate::page::PageType::Planning => {
+                                &mut self.page_manager.planning_page_state.task_list_state
+                            }
+                            _ => unreachable!(),
+                        },
                     );
                 } else if self.help_state.visible {
                     if key.code == KeyCode::Esc || key.code == KeyCode::Char('?') {

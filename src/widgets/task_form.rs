@@ -3,6 +3,7 @@ use crate::{
     store::Store,
     task::{Task, TaskStatus},
     ui::modal::centered_rect,
+    widgets::task_list::TaskListState,
 };
 use ratatui::{
     buffer::Buffer,
@@ -11,7 +12,6 @@ use ratatui::{
     style::{Color, Modifier, Style},
     widgets::{Block, BorderType, Borders, Clear, Paragraph, StatefulWidget, Widget, Wrap},
 };
-use strum::IntoEnumIterator;
 use tracing::debug;
 use tui_input::{Input as TextInput, backend::crossterm::EventHandler};
 
@@ -38,7 +38,6 @@ pub struct TaskFormState {
     pub active_field: ActiveFormField,
     pub mode: FormMode,
     pub error_message: Option<String>,
-    pub status_options: Vec<&'static str>,
     pub status_selection: TaskStatus,
 }
 
@@ -118,6 +117,7 @@ impl TaskFormState {
         tasks: &mut Vec<Task>,
         store: &mut dyn Store,
         status_message: &mut StatusMessage,
+        task_list_state: &mut TaskListState,
     ) {
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc | KeyCode::Char('q'))
@@ -134,7 +134,7 @@ impl TaskFormState {
             (_, KeyCode::Char(' ')) if self.active_field == ActiveFormField::Status => {
                 self.cycle_status();
             }
-            (_, KeyCode::Enter) => self.submit_form(tasks, store, status_message),
+            (_, KeyCode::Enter) => self.submit_form(tasks, store, status_message, task_list_state),
             _ if self.active_field == ActiveFormField::Description => {
                 self.description_input.handle_event(&event);
             }
@@ -150,6 +150,7 @@ impl TaskFormState {
         tasks: &mut Vec<Task>,
         store: &mut dyn Store,
         status_message: &mut StatusMessage,
+        task_list_state: &mut TaskListState,
     ) {
         match &self.mode {
             FormMode::Create => match self.create_task() {
@@ -183,6 +184,7 @@ impl TaskFormState {
                             } else {
                                 StatusMessage::success("Task updated successfully".into());
                                 self.is_modal_open = false;
+                                task_list_state.list_state.select(Some(pos));
                             }
                         }
                         Err(err) => {
@@ -296,7 +298,7 @@ impl TaskForm {
         value: &str,
         is_active: bool,
         cursor_position: usize,
-        scroll: usize,
+        _scroll: usize,
     ) {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
