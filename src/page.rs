@@ -23,7 +23,6 @@ use crate::{
 };
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter};
-use tui_logger::TuiWidgetState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumIter, Default)]
 pub enum PageType {
@@ -84,14 +83,7 @@ pub trait Page {
             .render(area, buf);
     }
 
-    fn render(
-        self,
-        area: Rect,
-        buf: &mut Buffer,
-        page_state: &mut Self::State,
-        tasks: &[Task],
-        debug_state: &TuiWidgetState,
-    );
+    fn render(self, area: Rect, buf: &mut Buffer, page_state: &mut Self::State, tasks: &[Task]);
 
     fn handle_key_event(
         &self,
@@ -101,7 +93,6 @@ pub trait Page {
         task_form: &mut TaskFormState,
         store: &mut TomlStore,
         status_message: &mut StatusMessage,
-        debug_state: &mut TuiWidgetState,
     ) -> Option<PageAction>;
 
     fn select_widget(&self, index: usize, state: &mut Self::State);
@@ -151,13 +142,7 @@ impl PageManager {
         }
     }
 
-    pub fn render(
-        &mut self,
-        frame: &mut Frame,
-        area: Rect,
-        tasks: &[Task],
-        debug_state: &TuiWidgetState,
-    ) {
+    pub fn render(&mut self, frame: &mut Frame, area: Rect, tasks: &[Task]) {
         let buf = frame.buffer_mut();
         let [main_area, help_area] =
             Layout::vertical([Constraint::Percentage(100), Constraint::Min(1)])
@@ -167,40 +152,20 @@ impl PageManager {
 
         match self.active_page {
             PageType::Home => {
-                self.home_page.render(
-                    main_area,
-                    buf,
-                    &mut self.home_page_state,
-                    tasks,
-                    debug_state,
-                );
+                self.home_page
+                    .render(main_area, buf, &mut self.home_page_state, tasks);
             }
             PageType::Planning => {
-                self.planning_page.render(
-                    main_area,
-                    buf,
-                    &mut self.planning_page_state,
-                    tasks,
-                    debug_state,
-                );
+                self.planning_page
+                    .render(main_area, buf, &mut self.planning_page_state, tasks);
             }
             PageType::Focus => {
-                self.focus_page.render(
-                    main_area,
-                    buf,
-                    &mut self.focus_page_state,
-                    tasks,
-                    debug_state,
-                );
+                self.focus_page
+                    .render(main_area, buf, &mut self.focus_page_state, tasks);
             }
             PageType::Stats => {
-                self.stats_page.render(
-                    main_area,
-                    buf,
-                    &mut self.stats_page_state,
-                    tasks,
-                    debug_state,
-                );
+                self.stats_page
+                    .render(main_area, buf, &mut self.stats_page_state, tasks);
             }
         }
     }
@@ -251,7 +216,6 @@ impl PageManager {
         task_form: &mut TaskFormState,
         store: &mut TomlStore,
         status_message: &mut StatusMessage,
-        debug_state: &mut TuiWidgetState,
     ) -> Option<PageAction> {
         let global_action = match (key.modifiers, key.code) {
             (_, KeyCode::Char('H')) => Some(PageAction::NavigateTo(PageType::Home)),
@@ -280,7 +244,6 @@ impl PageManager {
                 task_form,
                 store,
                 status_message,
-                debug_state,
             ),
             PageType::Planning => self.planning_page.handle_key_event(
                 key,
@@ -289,7 +252,6 @@ impl PageManager {
                 task_form,
                 store,
                 status_message,
-                debug_state,
             ),
             PageType::Focus => self.focus_page.handle_key_event(
                 key,
@@ -298,7 +260,6 @@ impl PageManager {
                 task_form,
                 store,
                 status_message,
-                debug_state,
             ),
             PageType::Stats => self.stats_page.handle_key_event(
                 key,
@@ -307,7 +268,6 @@ impl PageManager {
                 task_form,
                 store,
                 status_message,
-                debug_state,
             ),
         };
 

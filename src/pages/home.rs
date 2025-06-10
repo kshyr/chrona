@@ -15,7 +15,6 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     widgets::Widget as _,
 };
-use tui_logger::{TuiWidgetEvent, TuiWidgetState};
 
 #[derive(Default)]
 pub struct HomePageState {
@@ -50,7 +49,6 @@ impl HomePage {
         buf: &mut Buffer,
         page_state: &mut HomePageState,
         tasks: &[Task],
-        debug_state: &TuiWidgetState,
     ) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -93,15 +91,8 @@ impl HomePage {
 impl Page for HomePage {
     type State = HomePageState;
 
-    fn render(
-        self,
-        area: Rect,
-        buf: &mut Buffer,
-        page_state: &mut Self::State,
-        tasks: &[Task],
-        debug_state: &TuiWidgetState,
-    ) {
-        HomePage::render(self, area, buf, page_state, tasks, debug_state);
+    fn render(self, area: Rect, buf: &mut Buffer, page_state: &mut Self::State, tasks: &[Task]) {
+        HomePage::render(self, area, buf, page_state, tasks);
     }
 
     fn handle_key_event(
@@ -112,7 +103,6 @@ impl Page for HomePage {
         task_form: &mut TaskFormState,
         store: &mut TomlStore,
         status_message: &mut StatusMessage,
-        debug_state: &mut TuiWidgetState,
     ) -> Option<PageAction> {
         match page_state.active_widget {
             HomeWidget::TaskList => {
@@ -157,28 +147,7 @@ impl Page for HomePage {
                     }
                 }
             }
-            HomeWidget::CurrentSession => {
-                let debug_widget_event = match key.code {
-                    KeyCode::Char(' ') => Some(TuiWidgetEvent::SpaceKey),
-                    KeyCode::Esc => Some(TuiWidgetEvent::EscapeKey),
-                    KeyCode::PageUp | KeyCode::Char('K') => Some(TuiWidgetEvent::PrevPageKey),
-                    KeyCode::PageDown | KeyCode::Char('J') => Some(TuiWidgetEvent::NextPageKey),
-                    KeyCode::Up => Some(TuiWidgetEvent::UpKey),
-                    KeyCode::Down => Some(TuiWidgetEvent::DownKey),
-                    KeyCode::Left => Some(TuiWidgetEvent::LeftKey),
-                    KeyCode::Right => Some(TuiWidgetEvent::RightKey),
-                    KeyCode::Char('+') => Some(TuiWidgetEvent::PlusKey),
-                    KeyCode::Char('-') => Some(TuiWidgetEvent::MinusKey),
-                    KeyCode::Char('h') => Some(TuiWidgetEvent::HideKey),
-                    KeyCode::Char('f') => Some(TuiWidgetEvent::FocusKey),
-                    _ => None,
-                };
-
-                if let Some(event) = debug_widget_event {
-                    debug_state.transition(event);
-                    return Some(PageAction::None);
-                }
-            }
+            HomeWidget::CurrentSession => {}
             HomeWidget::RecentActivity => {}
         }
 

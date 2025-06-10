@@ -10,7 +10,6 @@ use ratatui::{
 };
 use std::{fmt::Debug, io::Stdout};
 use tracing::error;
-use tui_logger::TuiWidgetState;
 
 use crate::{
     help::{HelpScreen, HelpState},
@@ -61,22 +60,9 @@ pub struct App {
     pub page_manager: PageManager,
     pub task_form: TaskFormState,
     pub help_state: HelpState,
-    pub debug_state: TuiWidgetState,
     pub tasks: Vec<Task>,
     pub store: TomlStore,
     pub status_message: StatusMessage,
-}
-
-impl Debug for App {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(
-            format!(
-                "task_form: {} {:?}. {:?}",
-                self.task_form.is_modal_open, self.task_form.mode, self.status_message
-            )
-            .as_str(),
-        )
-    }
 }
 
 impl App {
@@ -114,9 +100,7 @@ impl App {
             Layout::horizontal([Constraint::Fill(3), Constraint::Fill(1)]).areas(header_area);
 
         let tasks_ref = &self.tasks;
-        let debug_state_ref = &self.debug_state;
-        self.page_manager
-            .render(frame, main_area, tasks_ref, debug_state_ref);
+        self.page_manager.render(frame, main_area, tasks_ref);
 
         if self.task_form.is_modal_open {
             frame.render_stateful_widget(TaskForm, frame.area(), self);
@@ -172,7 +156,6 @@ impl App {
                         &mut self.task_form,
                         &mut self.store,
                         &mut self.status_message,
-                        &mut self.debug_state,
                     );
                 }
             }

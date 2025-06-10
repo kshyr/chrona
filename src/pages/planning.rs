@@ -15,9 +15,8 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph, Widget as _ /* StatefulWidget, Widget */},
+    widgets::{Block, Borders, Paragraph, Widget as _},
 };
-use tui_logger::TuiWidgetState;
 
 #[derive(Default)]
 pub struct PlanningPageState {
@@ -51,7 +50,6 @@ impl PlanningPage {
         buf: &mut Buffer,
         page_state: &mut PlanningPageState,
         tasks: &[Task],
-        _debug_state: &TuiWidgetState,
     ) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -162,15 +160,8 @@ impl PlanningPage {
 impl Page for PlanningPage {
     type State = PlanningPageState;
 
-    fn render(
-        self,
-        area: Rect,
-        buf: &mut Buffer,
-        page_state: &mut Self::State,
-        tasks: &[Task],
-        debug_state: &TuiWidgetState,
-    ) {
-        PlanningPage::render(self, area, buf, page_state, tasks, debug_state);
+    fn render(self, area: Rect, buf: &mut Buffer, page_state: &mut Self::State, tasks: &[Task]) {
+        PlanningPage::render(self, area, buf, page_state, tasks);
     }
 
     fn handle_key_event(
@@ -181,7 +172,6 @@ impl Page for PlanningPage {
         task_form: &mut TaskFormState,
         store: &mut TomlStore,
         status_message: &mut StatusMessage,
-        _debug_state: &mut TuiWidgetState,
     ) -> Option<PageAction> {
         let action_from_widget = match page_state.active_widget {
             PlanningWidget::TaskList => {

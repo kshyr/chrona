@@ -19,16 +19,12 @@ use oauth2::TokenResponse as _;
 use ticktick::TickTickClient;
 use tracing::{debug, error, info};
 use tracing_subscriber::{fmt::layer, layer::SubscriberExt as _, util::SubscriberInitExt as _};
-use tui_logger;
 
 fn main() -> Result<()> {
     dotenv().ok();
-    tui_logger::init_logger(tui_logger::LevelFilter::Trace).unwrap();
-    tui_logger::set_default_level(tui_logger::LevelFilter::Trace);
     let log_file = File::create("chrona.log")?;
     tracing_subscriber::registry()
         .with(layer().with_writer(log_file))
-        .with(tui_logger::TuiTracingSubscriberLayer)
         .init();
 
     let access_token = match auth::load_token() {

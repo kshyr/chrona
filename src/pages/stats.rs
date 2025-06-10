@@ -10,7 +10,6 @@ use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     layout::{Constraint, Direction, Layout, Rect},
 };
-use tui_logger::TuiWidgetState;
 
 #[derive(Default)]
 pub struct StatsPageState {
@@ -29,7 +28,7 @@ impl StatsPageState {
 pub struct StatsPage;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, strum_macros::EnumIter)]
-enum StatsWidget {
+pub enum StatsWidget {
     #[default]
     TimeSummary,
     TaskCompletion,
@@ -43,7 +42,6 @@ impl StatsPage {
         buf: &mut Buffer,
         page_state: &mut StatsPageState,
         _tasks: &[Task],
-        _debug_state: &TuiWidgetState,
     ) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -91,15 +89,8 @@ impl StatsPage {
 impl Page for StatsPage {
     type State = StatsPageState;
 
-    fn render(
-        self,
-        area: Rect,
-        buf: &mut Buffer,
-        page_state: &mut Self::State,
-        tasks: &[Task],
-        debug_state: &TuiWidgetState,
-    ) {
-        StatsPage::render(self, area, buf, page_state, tasks, debug_state);
+    fn render(self, area: Rect, buf: &mut Buffer, page_state: &mut Self::State, tasks: &[Task]) {
+        StatsPage::render(self, area, buf, page_state, tasks);
     }
 
     fn handle_key_event(
@@ -110,7 +101,6 @@ impl Page for StatsPage {
         _task_form: &mut TaskFormState,
         _store: &mut TomlStore,
         _status_message: &mut StatusMessage,
-        _debug_state: &mut TuiWidgetState,
     ) -> Option<PageAction> {
         match (key.modifiers, key.code) {
             (modifiers, KeyCode::Tab) => {

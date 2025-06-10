@@ -13,7 +13,6 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph, Widget as _ /* StatefulWidget, Widget */},
 };
-use tui_logger::TuiWidgetState;
 
 #[derive(Default)]
 pub struct FocusPageState {
@@ -41,7 +40,7 @@ impl FocusPageState {
 pub struct FocusPage;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, strum_macros::EnumIter)]
-enum FocusWidget {
+pub enum FocusWidget {
     #[default]
     CurrentTask,
     Timer,
@@ -55,7 +54,6 @@ impl FocusPage {
         buf: &mut Buffer,
         page_state: &mut FocusPageState,
         tasks: &[Task],
-        _debug_state: &TuiWidgetState,
     ) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -163,15 +161,8 @@ impl FocusPage {
 impl Page for FocusPage {
     type State = FocusPageState;
 
-    fn render(
-        self,
-        area: Rect,
-        buf: &mut Buffer,
-        page_state: &mut Self::State,
-        tasks: &[Task],
-        debug_state: &TuiWidgetState,
-    ) {
-        FocusPage::render(self, area, buf, page_state, tasks, debug_state);
+    fn render(self, area: Rect, buf: &mut Buffer, page_state: &mut Self::State, tasks: &[Task]) {
+        FocusPage::render(self, area, buf, page_state, tasks);
     }
 
     fn handle_key_event(
@@ -182,7 +173,6 @@ impl Page for FocusPage {
         _task_form: &mut TaskFormState,
         _store: &mut TomlStore,
         status_message: &mut StatusMessage,
-        _debug_state: &mut TuiWidgetState,
     ) -> Option<PageAction> {
         match (key.modifiers, key.code) {
             (modifiers, KeyCode::Tab) => {
