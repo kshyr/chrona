@@ -161,10 +161,6 @@ impl FocusPage {
 impl Page for FocusPage {
     type State = FocusPageState;
 
-    fn render(self, area: Rect, buf: &mut Buffer, page_state: &mut Self::State, tasks: &[Task]) {
-        FocusPage::render(self, area, buf, page_state, tasks);
-    }
-
     fn handle_key_event(
         &self,
         key: KeyEvent,

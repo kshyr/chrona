@@ -91,10 +91,6 @@ impl HomePage {
 impl Page for HomePage {
     type State = HomePageState;
 
-    fn render(self, area: Rect, buf: &mut Buffer, page_state: &mut Self::State, tasks: &[Task]) {
-        HomePage::render(self, area, buf, page_state, tasks);
-    }
-
     fn handle_key_event(
         &self,
         key: KeyEvent,
@@ -123,20 +119,16 @@ impl Page for HomePage {
                         return Some(PageAction::None);
                     }
                     TaskListAction::DeleteSelectedTask(task_id) => {
-                        if let Some(idx) = tasks.iter().position(|t| t.id == task_id) {
-                            tasks.remove(idx);
-                            if let Err(e) = store.save_all_tasks(tasks.clone()) {
-                                *status_message = StatusMessage::error(format!(
-                                    "Failed to save tasks after delete: {}",
-                                    e
-                                ));
-                            } else {
-                                *status_message =
-                                    StatusMessage::success("Task deleted successfully".into());
-                            }
+                        if let Err(e) = store.delete_task(task_id) {
+                            *status_message = StatusMessage::error(format!(
+                                "Failed to save tasks after delete: {}",
+                                e
+                            ));
                         } else {
-                            StatusMessage::error("Task to delete not found.".into());
+                            *status_message =
+                                StatusMessage::success("Task deleted successfully".into());
                         }
+
                         return Some(PageAction::None);
                     }
                     TaskListAction::SelectNext

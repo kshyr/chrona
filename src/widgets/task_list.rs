@@ -12,9 +12,8 @@ use ratatui::{
 use tracing::debug;
 
 use crate::{
-    app::App,
     page::PageWidget,
-    task::{Task, TaskId, TaskStatus},
+    task::{Task, TaskId},
 };
 
 #[derive(Default)]
@@ -233,6 +232,4 @@ impl<'a> PageWidget for TaskList<'a> {
             .style(Style::default().fg(Color::DarkGray))
             .render(area, buf);
     }
-
-    fn handle_key_event(&self, _key: KeyEvent, _app: &mut App) {}
 }

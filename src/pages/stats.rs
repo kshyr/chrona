@@ -89,10 +89,6 @@ impl StatsPage {
 impl Page for StatsPage {
     type State = StatsPageState;
 
-    fn render(self, area: Rect, buf: &mut Buffer, page_state: &mut Self::State, tasks: &[Task]) {
-        StatsPage::render(self, area, buf, page_state, tasks);
-    }
-
     fn handle_key_event(
         &self,
         key: KeyEvent,

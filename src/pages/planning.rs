@@ -160,10 +160,6 @@ impl PlanningPage {
 impl Page for PlanningPage {
     type State = PlanningPageState;
 
-    fn render(self, area: Rect, buf: &mut Buffer, page_state: &mut Self::State, tasks: &[Task]) {
-        PlanningPage::render(self, area, buf, page_state, tasks);
-    }
-
     fn handle_key_event(
         &self,
         key: KeyEvent,

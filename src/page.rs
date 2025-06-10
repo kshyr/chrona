@@ -9,7 +9,7 @@ use ratatui::{
 };
 
 use crate::{
-    app::{App, StatusMessage},
+    app::StatusMessage,
     pages::{
         FocusPage, HomePage, PlanningPage, StatsPage, focus::FocusPageState, home::HomePageState,
         planning::PlanningPageState, stats::StatsPageState,
@@ -83,8 +83,6 @@ pub trait Page {
             .render(area, buf);
     }
 
-    fn render(self, area: Rect, buf: &mut Buffer, page_state: &mut Self::State, tasks: &[Task]);
-
     fn handle_key_event(
         &self,
         key: KeyEvent,
@@ -101,7 +99,6 @@ pub trait Page {
 }
 
 pub trait PageWidget {
-    fn handle_key_event(&self, key: KeyEvent, app: &mut App);
     fn render_help(&self, area: Rect, buf: &mut Buffer);
 }
 
