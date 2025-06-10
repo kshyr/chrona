@@ -13,7 +13,6 @@ use ratatui::{
     buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     layout::{Constraint, Direction, Layout, Rect},
-    style::Color,
     widgets::Widget as _,
 };
 use tui_logger::{TuiWidgetEvent, TuiWidgetState};
@@ -180,7 +179,7 @@ impl Page for HomePage {
                     return Some(PageAction::None);
                 }
             }
-            HomeWidget::RecentActivity => { /* TODO: Handle keys for RecentActivity */ }
+            HomeWidget::RecentActivity => {}
         }
 
         match (key.modifiers, key.code) {

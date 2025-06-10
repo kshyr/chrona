@@ -180,14 +180,6 @@ impl<'a> Widget for TaskList<'a> {
                 };
 
                 let created_at = task.created_at.format("%y-%m-%d %H:%M");
-
-                let status_style = match task.status {
-                    TaskStatus::Backlog => Style::default().fg(Color::DarkGray),
-                    TaskStatus::Todo => Style::default().fg(Color::Cyan),
-                    TaskStatus::InProgress => Style::default().fg(Color::Yellow),
-                    TaskStatus::Done => Style::default().fg(Color::Green),
-                };
-
                 let status_text = format!("{:?}", task.status);
 
                 let line = Line::from(vec![
@@ -204,7 +196,10 @@ impl<'a> Widget for TaskList<'a> {
                         Style::default().add_modifier(Modifier::BOLD),
                     ),
                     Span::raw(" "),
-                    Span::styled(format!("[{}]", status_text), status_style),
+                    Span::styled(
+                        format!("[{}]", status_text),
+                        Style::default().fg(task.status.color()),
+                    ),
                     Span::raw(" "),
                     Span::styled(
                         format!("({})", created_at),

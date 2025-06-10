@@ -1,3 +1,4 @@
+use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 use strum_macros::{AsRefStr, EnumIter};
 
@@ -10,6 +11,17 @@ pub enum TaskStatus {
     Todo,
     InProgress,
     Done,
+}
+
+impl TaskStatus {
+    pub fn color(&self) -> Color {
+        match self {
+            TaskStatus::Backlog => Color::Gray,
+            TaskStatus::Todo => Color::Blue,
+            TaskStatus::InProgress => Color::Yellow,
+            TaskStatus::Done => Color::Green,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

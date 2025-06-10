@@ -96,12 +96,7 @@ impl PlanningPage {
 
         if let Some(selected_idx) = page_state.task_list_state.list_state.selected() {
             if let Some(task) = tasks.get(selected_idx) {
-                let status_style = match task.status {
-                    crate::task::TaskStatus::Backlog => Style::default().fg(Color::Gray),
-                    crate::task::TaskStatus::Todo => Style::default().fg(Color::Blue),
-                    crate::task::TaskStatus::InProgress => Style::default().fg(Color::Yellow),
-                    crate::task::TaskStatus::Done => Style::default().fg(Color::Green),
-                };
+                let status_style = Style::default().fg(task.status.color());
 
                 let created_at = task.created_at.format("%Y-%m-%d %H:%M").to_string();
                 let updated_at = task.updated_at.format("%Y-%m-%d %H:%M").to_string();
