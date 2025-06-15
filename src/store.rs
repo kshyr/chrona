@@ -15,10 +15,6 @@ pub trait Store {
     fn update_task(&mut self, id: TaskId, task: Task) -> Result<()>;
 }
 
-pub fn get_data_dir() -> Result<PathBuf> {
-    get_dir(BaseDirs::new().unwrap().data_dir(), "CHRONA_DATA_DIR")
-}
-
 fn get_dir(path: &Path, env_key: &'static str) -> Result<PathBuf> {
     let directory = if let Ok(s) = std::env::var(env_key) {
         PathBuf::from(s)
@@ -35,6 +31,10 @@ fn get_dir(path: &Path, env_key: &'static str) -> Result<PathBuf> {
     Ok(directory)
 }
 
-pub fn get_config_dir() -> Result<PathBuf> {
-    get_dir(BaseDirs::new().unwrap().config_dir(), "CHRONA_CONFIG_DIR")
+pub fn get_data_dir() -> Result<PathBuf> {
+    get_dir(BaseDirs::new().unwrap().data_dir(), "CHRONA_DATA_DIR")
 }
+
+// pub fn get_config_dir() -> Result<PathBuf> {
+//     get_dir(BaseDirs::new().unwrap().config_dir(), "CHRONA_CONFIG_DIR")
+// }

@@ -24,3 +24,4 @@ dotenv = "0.15.0"
 oauth2 = { version = "5.0.0", features = ["ureq"] }
 webbrowser = "1.0.4"
 keyring = { version = "3.6.2", features = ["apple-native", "windows-native", "linux-native"] }
+nanoid = "0.4.0"
