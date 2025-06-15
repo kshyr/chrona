@@ -12,7 +12,7 @@ use ratatui::{
     style::{Color, Modifier, Style},
     widgets::{Block, BorderType, Borders, Clear, Paragraph, StatefulWidget, Widget, Wrap},
 };
-use tracing::debug;
+use tracing::{debug, error};
 use tui_input::{Input as TextInput, backend::crossterm::EventHandler};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -188,7 +188,7 @@ impl TaskFormState {
                             }
                         }
                         Err(err) => {
-                            debug!("Failed to update task: {}", err);
+                            error!("Failed to update task: {}", err);
                             self.error_message = Some(err);
                         }
                     }

@@ -9,7 +9,7 @@ use ratatui::{
         StatefulWidget, Widget,
     },
 };
-use tracing::debug;
+use tracing::error;
 
 use crate::{
     page::PageWidget,
@@ -96,7 +96,7 @@ impl TaskListState {
                     if let Some(task) = tasks.get(selected_idx) {
                         TaskListAction::EditSelectedTask(task.id)
                     } else {
-                        debug!("Attempted to edit task at invalid index: {}", selected_idx);
+                        error!("Attempted to edit task at invalid index: {}", selected_idx);
                         TaskListAction::None
                     }
                 } else {
@@ -108,7 +108,7 @@ impl TaskListState {
                     if let Some(task) = tasks.get(selected_idx) {
                         TaskListAction::DeleteSelectedTask(task.id)
                     } else {
-                        debug!(
+                        error!(
                             "Attempted to delete task at invalid index: {}",
                             selected_idx
                         );
