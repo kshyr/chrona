@@ -94,7 +94,7 @@ impl TaskListState {
             KeyCode::Char('e') => {
                 if let Some(selected_idx) = state.list_state.selected() {
                     if let Some(task) = tasks.get(selected_idx) {
-                        TaskListAction::EditSelectedTask(task.id)
+                        TaskListAction::EditSelectedTask(task.id.clone())
                     } else {
                         error!("Attempted to edit task at invalid index: {}", selected_idx);
                         TaskListAction::None
@@ -106,7 +106,7 @@ impl TaskListState {
             KeyCode::Char('d') => {
                 if let Some(selected_idx) = state.list_state.selected() {
                     if let Some(task) = tasks.get(selected_idx) {
-                        TaskListAction::DeleteSelectedTask(task.id)
+                        TaskListAction::DeleteSelectedTask(task.id.clone())
                     } else {
                         error!(
                             "Attempted to delete task at invalid index: {}",

@@ -2,7 +2,7 @@ use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 use strum_macros::{AsRefStr, EnumIter};
 
-pub type TaskId = usize;
+pub type TaskId = String;
 
 #[derive(Debug, Default, Clone, EnumIter, AsRefStr, Serialize, Deserialize)]
 pub enum TaskStatus {
@@ -37,7 +37,7 @@ pub struct Task {
 impl Default for Task {
     fn default() -> Self {
         Self {
-            id: 0,
+            id: chrono::Utc::now().timestamp_micros().to_string(),
             title: String::default(),
             description: None,
             status: TaskStatus::Backlog,

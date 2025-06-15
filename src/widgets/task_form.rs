@@ -1,7 +1,7 @@
 use crate::{
     app::{App, StatusMessage},
     store::Store,
-    task::{Task, TaskStatus},
+    task::{Task, TaskId, TaskStatus},
     ui::modal::centered_rect,
     widgets::task_list::TaskListState,
 };
@@ -27,7 +27,7 @@ pub enum ActiveFormField {
 pub enum FormMode {
     #[default]
     Create,
-    Edit(usize),
+    Edit(TaskId),
 }
 
 #[derive(Default, Clone)]
@@ -59,7 +59,7 @@ impl TaskFormState {
             self.description_input = TextInput::new(desc.clone());
         }
         self.status_selection = task.status.clone();
-        self.mode = FormMode::Edit(task.id);
+        self.mode = FormMode::Edit(task.id.clone());
         self.is_modal_open = true;
         debug!("TaskFormState prepared for editing task ID: {}", task.id);
     }
@@ -77,7 +77,8 @@ impl TaskFormState {
         Ok(crate::task::Task {
             id: now
                 .timestamp_nanos_opt()
-                .unwrap_or_else(|| now.timestamp_micros()) as usize,
+                .unwrap_or_else(|| now.timestamp_micros())
+                .to_string(),
             title: self.title_input.value().trim().to_string(),
             description: if self.description_input.value().trim().is_empty() {
                 None
@@ -92,7 +93,7 @@ impl TaskFormState {
 
     pub fn update_task(
         &self,
-        task_id: usize,
+        task_id: TaskId,
         original_created_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<crate::task::Task, String> {
         self.validate()?;
@@ -170,14 +171,13 @@ impl TaskFormState {
                 }
             },
             FormMode::Edit(task_id) => {
-                let task_id_val = *task_id;
-                if let Some(pos) = tasks.iter().position(|t| t.id == task_id_val) {
+                if let Some(pos) = tasks.iter().position(|t| t.id == *task_id) {
                     let original_created_at = tasks[pos].created_at;
-                    match self.update_task(task_id_val, original_created_at) {
+                    match self.update_task(task_id.clone(), original_created_at) {
                         Ok(updated_task) => {
-                            debug!(task = ?updated_task, task_id = task_id_val, "submit in Edit mode");
+                            debug!(task = ?updated_task, task_id = task_id, "submit in Edit mode");
                             tasks[pos] = updated_task.clone();
-                            if let Err(e) = store.update_task(task_id_val, updated_task) {
+                            if let Err(e) = store.update_task(task_id.clone(), updated_task) {
                                 tracing::error!("Failed to save updated task to store: {}", e);
                                 *status_message =
                                     StatusMessage::error(format!("Error updating task: {}", e));
@@ -193,14 +193,9 @@ impl TaskFormState {
                         }
                     }
                 } else {
-                    self.error_message = Some(format!(
-                        "Task with ID {} not found for update.",
-                        task_id_val
-                    ));
-                    tracing::error!(
-                        "Attempted to edit non-existent task with ID: {}",
-                        task_id_val
-                    );
+                    self.error_message =
+                        Some(format!("Task with ID {} not found for update.", task_id));
+                    tracing::error!("Attempted to edit non-existent task with ID: {}", task_id);
                 }
             }
         }

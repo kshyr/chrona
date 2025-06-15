@@ -8,14 +8,15 @@ use ratatui::{
     style::{Color, Style},
     widgets::Paragraph,
 };
-use std::{fmt::Debug, io::Stdout};
-use tracing::error;
+use std::{env, fmt::Debug, io::Stdout};
+use tracing::{debug, error, info};
 
 use crate::{
     help::{HelpScreen, HelpState},
     page::PageManager,
     store::Store,
     task::Task,
+    ticktick::TickTickClient,
     toml::TomlStore,
     widgets::{
         navbar::Navbar,
@@ -66,20 +67,40 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> Self {
-        let mut store = TomlStore::default();
-        let tasks = store.load_all_tasks().unwrap_or_else(|e| {
-            error!("Failed to load tasks: {}. Starting with an empty list.", e);
-            Vec::new()
-        });
+    pub fn new() -> Result<Self> {
+        let username = env::var("TICKTICK_USERNAME")?;
+        let password = env::var("TICKTICK_PASSWORD")?;
+        let ticktick_client = TickTickClient::new(username, password)?;
+        info!("TickTick client created successfully.");
 
-        Self {
-            running: true,
+        match ticktick_client.get_projects() {
+            Some(projects) => debug!("Projects: {:?}", projects),
+            None => error!("Error fetching projects"),
+        };
+
+        let mut store = TomlStore::default();
+        // let tasks = store.load_all_tasks().unwrap_or_else(|e| {
+        //     error!("Failed to load tasks: {}. Starting with an empty list.", e);
+        //     Vec::new()
+        // });
+
+        let tasks = ticktick_client
+            .get_tasks()
+            .unwrap()
+            .iter()
+            .map(|t| {
+                let task: Task = t.clone().into();
+                task
+            })
+            .collect();
+
+        Ok(Self {
             tasks,
             store,
+            running: true,
             page_manager: PageManager::new(),
             ..Default::default()
-        }
+        })
     }
 
     pub fn run(mut self, mut terminal: Terminal<CrosstermBackend<Stdout>>) -> Result<()> {

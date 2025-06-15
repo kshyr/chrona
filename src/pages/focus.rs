@@ -1,7 +1,7 @@
 use crate::{
     app::StatusMessage,
     page::{Page, PageAction, cycle_widget_index},
-    task::Task,
+    task::{Task, TaskId},
     toml::TomlStore,
     widgets::task_form::TaskFormState,
 };
@@ -27,7 +27,7 @@ impl FocusPageState {
             ..Default::default()
         }
     }
-    pub fn set_selected_task_by_id(&mut self, tasks: &[Task], task_id_to_find: Option<usize>) {
+    pub fn set_selected_task_by_id(&mut self, tasks: &[Task], task_id_to_find: Option<TaskId>) {
         if let Some(id) = task_id_to_find {
             self.selected_task_idx = tasks.iter().position(|t| t.id == id);
         } else {
@@ -180,7 +180,7 @@ impl Page for FocusPage {
             }
             (_, KeyCode::Char('t')) => {
                 if !tasks.is_empty() {
-                    page_state.set_selected_task_by_id(tasks, Some(tasks[0].id));
+                    page_state.set_selected_task_by_id(tasks, Some(tasks[0].id.clone()));
                 } else {
                     *status_message = StatusMessage::error("No tasks to focus on.".into());
                 }
