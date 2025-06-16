@@ -9,7 +9,7 @@ use tracing::error;
 
 const TOML_TASKS_EXAMPLE: &'static str = r#"
 [[tasks]]
-id = 1
+id = "1"
 title = "Load tasks from TOML file"
 description = "Make sure that project folder is created on initial launch"
 status = "Todo"
@@ -17,14 +17,14 @@ created_at = "2025-05-06T00:00:00Z"
 updated_at = "2025-05-06T00:00:00Z"
 
 [[tasks]]
-id = 2
+id = "2"
 title = "Session work. Work on Session logging and all that."
 status = "Todo"
 created_at = "2025-05-06T00:00:00Z"
 updated_at = "2025-05-06T00:00:00Z"
 
 [[tasks]]
-id = 3 # Example with string TaskId
+id = "3" # Example with string TaskId
 # id = "a1b2c3d4-e5f6-7890-1234-567890abcdef"
 title = "Deploy Initial Version"
 status = "Todo"

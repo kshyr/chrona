@@ -14,7 +14,6 @@ use tracing::{debug, error, info};
 use crate::{
     help::{HelpScreen, HelpState},
     page::PageManager,
-    store::Store,
     task::Task,
     ticktick::TickTickClient,
     toml::TomlStore,
@@ -78,7 +77,7 @@ impl App {
             None => error!("Error fetching projects"),
         };
 
-        let mut store = TomlStore::default();
+        let store = TomlStore::default();
         // let tasks = store.load_all_tasks().unwrap_or_else(|e| {
         //     error!("Failed to load tasks: {}. Starting with an empty list.", e);
         //     Vec::new()

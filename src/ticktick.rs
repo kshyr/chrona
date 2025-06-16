@@ -1,32 +1,33 @@
-use std::{fs::File, io::Write, str::FromStr};
-
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
-use oauth2::{ureq, url::Url};
-use serde::{Deserialize, Serialize, de, de::IntoDeserializer};
+use nanoid::nanoid;
+use serde::{
+    Deserialize, Serialize, Serializer,
+    de::{self, IntoDeserializer},
+};
 use serde_json::Value;
+use std::{fs::File, io::Write};
 use tracing::{debug, info};
+use url::Url;
 
-use crate::task::TaskStatus;
+use crate::{
+    store::get_cache_dir,
+    task::{TaskId, TaskStatus},
+};
 
-/// The completion status of a checklist item or task.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
 pub enum Status {
-    /// Task is abandoned or "won't do".
     #[serde(rename = "-1")]
     Abandoned = -1,
-    /// Task is active/normal.
+    #[default]
     #[serde(rename = "0")]
     Normal = 0,
-    /// An alternative representation for completed status.
     #[serde(rename = "1")]
     CompletedAlt = 1,
-    /// Task is completed.
     #[serde(rename = "2")]
     Completed = 2,
 }
 
-/// Priority of a task.
 #[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum TaskPriority {
     #[default]
@@ -40,7 +41,6 @@ pub enum TaskPriority {
     High,
 }
 
-/// Defines the kind of a task, which can be a standard task, a note, or a checklist.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum Kind {
     TEXT,
@@ -48,7 +48,6 @@ pub enum Kind {
     CHECKLIST,
 }
 
-/// Defines the view mode for a project.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum ViewMode {
@@ -57,7 +56,6 @@ pub enum ViewMode {
     Timeline,
 }
 
-/// Defines how tasks are sorted or grouped.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum SortOptions {
@@ -69,73 +67,75 @@ pub enum SortOptions {
     None,
 }
 
-/// Represents a single item in a checklist task.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ChecklistItem {
-    /// ID of the checklist item.
     pub id: String,
-    /// Title of the checklist item.
     pub title: Option<String>,
-    /// The completion status of the checklist item.
     pub status: Option<Status>,
-    /// Completed time in `yyyy-MM-dd'T'HH:mm:ssZ` format.
     pub completed_time: Option<String>,
-    /// The task is due any time on the due date, rather than at a specific time.
     pub is_all_day: Option<bool>,
-    /// The order of the checklist item.
     pub sort_order: Option<i64>,
-    /// Start date and time in `yyyy-MM-dd'T'HH:mm:ssZ` format.
     pub start_date: Option<String>,
-    /// IANA time zone. Example: 'America/Los_Angeles'.
     pub time_zone: Option<String>,
     #[serde(default)]
     pub snooze_reminder_time: serde_json::Value,
 }
 
-/// Represents a reminder for a task.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TaskReminder {
-    /// Reminder ID.
     pub id: Option<String>,
-    /// Reminder trigger (iCal format).
     pub trigger: String,
 }
 
-/// Represents a TickTick Task.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Task {
-    pub id: String,
+    pub id: TaskId,
     pub project_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub etag: String,
-    pub status: i64,   // Deserialize as integer
-    pub priority: i64, // Deserialize as integer
+    pub status: i64,
+    pub priority: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress: Option<i64>,
     pub sort_order: i64,
     pub is_floating: bool,
-    pub kind: Option<String>, // Deserialize as String
+    pub is_all_day: Option<bool>,
+    pub kind: Option<Kind>,
 
-    // Make all other potentially missing fields optional
-    pub modified_time: String,
-    pub created_time: Option<String>,
-    pub completed_time: Option<String>,
-    pub start_date: Option<String>,
-    pub due_date: Option<String>,
-    pub time_zone: Option<String>,
+    #[serde(serialize_with = "serialize_current_time_as_custom_rfc3339")]
+    pub modified_time: DateTime<Utc>,
+    #[serde(serialize_with = "serialize_current_time_as_custom_rfc3339")]
+    pub created_time: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_time: Option<DateTime<Utc>>,
+    #[serde(serialize_with = "serialize_current_time_as_custom_rfc3339_opt")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_date: Option<DateTime<Utc>>,
+    pub due_date: Option<DateTime<Utc>>,
+    pub ex_date: Option<Vec<()>>,
+    pub time_zone: String,
     #[serde(rename = "desc")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(default)]
     pub items: Vec<ChecklistItem>,
     #[serde(default)]
-    pub reminders: Vec<Value>, // Use Value for flexibility
+    pub reminders: Vec<Value>,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<String>,
-    #[serde(default)]
-    pub child_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub child_ids: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub creator: Option<i64>,
+    pub assignee: Option<()>,
 }
 
 impl Into<crate::task::Task> for Task {
@@ -144,32 +144,24 @@ impl Into<crate::task::Task> for Task {
             id: self.id,
             title: self.title.unwrap_or("Untitled".into()),
             description: self.description,
-            status: if self.status > 0 {
+            status: if self.status as usize > 0 {
                 TaskStatus::Done
             } else {
                 TaskStatus::Backlog
             },
-            created_at: chrono::DateTime::from_str(&self.created_time.unwrap())
-                .ok()
-                .unwrap(),
-            updated_at: chrono::DateTime::from_str(&self.modified_time)
-                .ok()
-                .unwrap(),
+            created_at: self.created_time,
+            updated_at: self.modified_time,
         }
     }
 }
 
-/// Represents how tasks are sorted within a project or tag.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SortOption {
-    /// How tasks are grouped.
     pub group_by: SortOptions,
-    /// How tasks are ordered.
     pub order_by: SortOptions,
 }
 
-/// An unknown timeline-related model.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectTimeline {
@@ -178,7 +170,22 @@ pub struct ProjectTimeline {
     pub sort_option: SortOption,
 }
 
-/// Represents a TickTick Project (also known as a List).
+#[derive(Serialize)]
+struct TickTickId(TaskId);
+
+impl Default for TickTickId {
+    fn default() -> Self {
+        let alphabet: [char; 16] = [
+            '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'a', 'b', 'c', 'd', 'e', 'f',
+        ];
+
+        let id_prefix = String::from("68");
+        let id_length = 24 - id_prefix.len();
+        let id = id_prefix + &nanoid!(id_length, &alphabet);
+        Self(id)
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
@@ -189,62 +196,45 @@ pub struct Project {
     pub group_id: Option<String>,
     pub in_all: bool,
     pub kind: Option<String>,
-    pub modified_time: String, // Keep as String
+    pub modified_time: String,
     pub sort_option: Option<SortOption>,
     pub permission: Option<String>,
 
     #[serde(deserialize_with = "deserialize_empty_string_as_none")]
     pub view_mode: Option<ViewMode>,
 
-    // Use Option for nested objects that can be null
     pub timeline: Option<ProjectTimeline>,
 
-    // Add other fields from the JSON
     pub closed: Option<bool>,
     pub user_count: Option<i64>,
 }
 
-/// Represents a Project Group (a folder for projects).
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectGroup {
-    /// ETag of the project group object.
     pub etag: String,
-    /// ID of the project group.
     pub id: String,
-    /// Name of the project group.
     pub name: String,
 }
 
-/// Represents a TickTick Tag.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Tag {
-    /// ETag of the tag object.
     pub etag: String,
-    /// Name of the tag, as it appears in the UI.
     pub label: String,
-    /// Name of the tag, similar to the label but lowercase.
     pub name: String,
-    /// Original name of the tag, used to identify it.
     pub raw_name: String,
-    /// Color of the tag, eg. '#F18181'.
     pub color: Option<String>,
-    /// Name of the parent tag, if nested.
     pub parent: Option<String>,
-    /// How to sort the tasks within the tag.
     pub sort_option: Option<SortOption>,
 }
 
-/// Represents the `syncTaskBean` portion of the batch response.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncTaskBean {
-    /// List of all active tasks for the user.
     pub update: Vec<Task>,
 }
 
-/// The response from the `/api/v2/batch/check/0` endpoint.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct BatchData {
@@ -259,7 +249,6 @@ pub struct BatchData {
     pub check_point: i64,
 }
 
-/// Represents the user's subscription status.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct UserStatus {
@@ -269,7 +258,6 @@ pub struct UserStatus {
     pub pro_end_date: String,
 }
 
-/// Helper to deserialize fields that might be an empty string into `None`.
 fn deserialize_empty_string_as_none<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
     D: de::Deserializer<'de>,
@@ -282,7 +270,26 @@ where
     }
 }
 
-// Static headers for API requests.
+pub fn serialize_current_time_as_custom_rfc3339<S>(
+    datetime: &DateTime<Utc>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    format!("{}", datetime.format("%Y-%m-%dT%H:%M:%S%.3f%z")).serialize(serializer)
+}
+
+pub fn serialize_current_time_as_custom_rfc3339_opt<S>(
+    datetime: &Option<DateTime<Utc>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    Ok(format!("{}", datetime.unwrap().format("%Y-%m-%dT%H:%M:%S%.3f%z")).serialize(serializer)?)
+}
+
 const X_DEVICE_HEADER: &str = r#"{"platform":"web","os":"macOS 10.15.7","device":"Chrome 121.0.0.0","name":"","version":6310,"id":"68386f4eac80454b13a089b2","channel":"website","campaign":"","websocket":""}"#;
 const USER_AGENT_HEADER: &str = r#"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"#;
 
@@ -292,20 +299,32 @@ struct LoginBody {
     password: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
 struct AddTaskPayload {
-    add: Vec<CreateTask>,
+    add: Vec<Task>,
+    add_attachments: Vec<()>,
+    delete: Vec<()>,
+    delete_attachments: Vec<()>,
+    update: Vec<()>,
+    update_attachments: Vec<()>,
 }
 
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct CreateTask {
-    project_id: String,
-    title: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    content: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    priority: Option<TaskPriority>,
+fn cache_json(path: &str, json: String) -> Result<()> {
+    let mut file_path = get_cache_dir()?;
+    file_path.push(path);
+    if !file_path.set_extension("json") {
+        return Err(anyhow!("Failed to set cache file extension"));
+    }
+    let mut json_file = File::create(file_path)?;
+    json_file.write_all(json.as_bytes())?;
+    Ok(())
+}
+
+fn body_to_pretty_json(body: ureq::Body) -> Result<String> {
+    let parsed_json: Value = serde_json::from_reader(body.into_reader())?;
+    let pretty_string = serde_json::to_string_pretty(&parsed_json)?;
+    Ok(pretty_string)
 }
 
 #[derive(Debug)]
@@ -329,6 +348,13 @@ impl TickTickClient {
     pub fn new(username: String, password: String) -> Result<Self> {
         let agent = ureq::agent();
 
+        // let mut session_json_path = get_cache_dir()?;
+        // session_json_path.push("session.json");
+        // let f = File::open(session_json_path)?;
+        // let buf = BufReader::new(f);
+        // let session: Option<Session> = serde_json::from_reader(buf).ok();
+        // debug!("Session: {session:?}");
+
         let mut client = Self {
             http: agent,
             base_url: Url::parse("https://api.ticktick.com/api/v2/")?,
@@ -343,7 +369,9 @@ impl TickTickClient {
         info!("Initial data sync complete.");
 
         debug!("{:?}", client.state);
-        println!("{:?}", client.state);
+
+        let res = client.create_task("Hi from Chrona".into(), None, None, None);
+        debug!("CEREATEAASK: {:?}", res);
 
         Ok(client)
     }
@@ -368,15 +396,51 @@ impl TickTickClient {
         let response = self
             .http
             .post(login_url.as_str())
-            .set("User-Agent", USER_AGENT_HEADER)
-            .set("x-device", X_DEVICE_HEADER)
-            .set("content-type", "application/json")
-            .send_string(&serde_json::to_string(&body)?)
-            .unwrap();
+            .header("User-Agent", USER_AGENT_HEADER)
+            .header("x-device", X_DEVICE_HEADER)
+            .header("content-type", "application/json")
+            .send(&serde_json::to_string(&body)?)?;
 
-        let cookies = response.all("set-cookie").join("; ") + ";";
-        self.cookies = cookies.split(';').map(|s| s.trim().to_string()).collect();
-        debug!("Cookies: {:?}", self.cookies);
+        let mut cookie_kv: Vec<(&str, &str)> = vec![];
+        response
+            .headers()
+            .get_all("set-cookie")
+            .iter()
+            .for_each(|sc| {
+                sc.to_str().unwrap().split("; ").for_each(|v| {
+                    debug!("{v}");
+                    let kv: Vec<&str> = v.trim().split("=").collect();
+                    debug!("{kv:?}");
+                    let mut exists = false;
+                    cookie_kv.iter().for_each(|c| {
+                        if c.1 == "\"\"" {
+                            return;
+                        }
+
+                        if c.0 == kv[0] {
+                            exists = true;
+                        }
+                    });
+                    if !exists {
+                        cookie_kv.push((kv[0], kv.get(1).unwrap_or(&"")));
+                    }
+                });
+            });
+
+        let cookie_values: Vec<String> = cookie_kv
+            .iter()
+            .map(|(k, v)| {
+                if v != &"" {
+                    k.to_string() + "=" + v
+                } else {
+                    k.to_string()
+                }
+            })
+            .collect();
+
+        self.cookies = cookie_values;
+        let cookie_header = self.cookies.join("; ") + ";";
+        debug!("Cookie header: {:?}", cookie_header);
 
         Ok(())
     }
@@ -388,27 +452,19 @@ impl TickTickClient {
         let response = self
             .http
             .get(sync_url.as_str())
-            .set("x-device", X_DEVICE_HEADER)
-            .set("User-Agent", USER_AGENT_HEADER)
-            .set("Cookie", &(self.cookies.join(";") + ";"))
+            .header("x-device", X_DEVICE_HEADER)
+            .header("User-Agent", USER_AGENT_HEADER)
+            .header("Cookie", &(self.cookies.join(";") + ";"))
             .call()
             .context("Failed to call sync endpoint")?;
 
         if response.status() == 200 {
-            let json_string = response.into_string()?;
+            let json = body_to_pretty_json(response.into_body())?;
+            debug!("SyncDataResponse: {json:?}");
 
-            let pretty_json_string =
-                if let Ok(parsed_json) = serde_json::from_str::<Value>(&json_string) {
-                    serde_json::to_string_pretty(&parsed_json).unwrap()
-                } else {
-                    return Err(anyhow!("Could not even parse as a raw JSON Value."));
-                };
-            debug!("SyncDataResponse: {pretty_json_string:?}");
-            let mut json_file = File::create(".cache/batch_data.json")?;
-            json_file.write_all(pretty_json_string.as_bytes())?;
+            let sync_data: BatchData = serde_json::from_str(&json)?;
 
-            let sync_data: BatchData = serde_json::from_str(&pretty_json_string)?;
-
+            cache_json("batch_data", json)?;
             info!("Successfully deserialized sync data.");
 
             self.state.inbox_id = Some(sync_data.inbox_id);
@@ -420,9 +476,9 @@ impl TickTickClient {
             Ok(())
         } else {
             Err(anyhow!(
-                "Failed to sync data. Status: {}. Body: {}",
+                "Failed to sync data. Status: {}. Body: {:?}",
                 response.status(),
-                response.into_string().unwrap_or_default()
+                response.body()
             ))
         }
     }
@@ -436,27 +492,44 @@ impl TickTickClient {
     ) -> Result<()> {
         let url = self.endpoint("batch/task")?;
         let project_id = project_id.unwrap_or_else(|| self.inbox_id().unwrap());
+        let now = chrono::Utc::now();
 
-        let new_task = CreateTask {
-            title,
+        let new_task = Task {
+            id: TickTickId::default().0,
+            title: Some(title),
+            is_all_day: Some(true),
+            content: Some(content.unwrap_or_default()),
+            progress: Some(0),
+            priority: priority.unwrap_or_default() as i64,
+            ex_date: Some(vec![]),
+            start_date: Some(now),
+            sort_order: -(now.timestamp_millis() * 4096),
+            created_time: now,
+            modified_time: now,
             project_id,
-            content,
-            priority,
+            time_zone: "America/New_York".into(),
+            ..Default::default()
         };
+
+        debug!("New Task:\n{}", serde_json::to_string(&new_task)?);
 
         let payload = AddTaskPayload {
             add: vec![new_task],
+            ..Default::default()
         };
-        let payload_string = serde_json::to_string(&payload)?;
+
+        let payload_string = serde_json::to_string_pretty(&payload)?;
 
         info!("Creating task with payload: {}", payload_string);
 
         let response = self
             .http
             .post(url.as_str())
-            .set("x-device", X_DEVICE_HEADER)
-            .set("User-Agent", USER_AGENT_HEADER)
-            .send_string(&payload_string)
+            .header("x-device", X_DEVICE_HEADER)
+            .header("User-Agent", USER_AGENT_HEADER)
+            .header("Cookie", self.cookies.join(";") + ";")
+            .header("content-type", "application/json")
+            .send(&payload_string)
             .context("Failed to send create task request")?;
 
         if response.status() == 200 {
@@ -464,9 +537,9 @@ impl TickTickClient {
             Ok(())
         } else {
             Err(anyhow!(
-                "Failed to create task. Status: {}. Body: {}",
+                "Failed to create task. Status: {}. Body: {:?}",
                 response.status(),
-                response.into_string().unwrap_or_default()
+                response.body()
             ))
         }
     }
